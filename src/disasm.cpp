@@ -924,7 +924,7 @@ int extend = (addrsize == 32) ? 4 : 2;
 void floating_point(int e1)
 {
 int esc = e1*8 + REG(modrm());
-  if(MOD(modrm())==3){	//2-‰ €‰’>C0
+  if(MOD(modrm())==3){	//2-Ð™ Ð‘ÐÐ™Ð¢>C0
     if (fspecial[esc]) {
       if (fspecial[esc][0]!=NULL&&fspecial[esc][0][0] == '*')ua_str(fspecial[esc][0]+1);
       else ua_str(fspecial[esc][RM(modrm())]);
