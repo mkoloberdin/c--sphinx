@@ -15,11 +15,11 @@ typedef union{
 }WORD32;
 
 /* prototypes */
-void ua_str(char *);
+void ua_str(const char *);
 unsigned char getbyte(void);
 int modrm();
 int sib();
-void uprintf(char *, ...);
+void uprintf(const char *, ...);
 void uputchar(char );
 int bytes(char );
 void outhex(char , int , int , int , int );

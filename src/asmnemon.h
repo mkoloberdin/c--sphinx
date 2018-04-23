@@ -1,6 +1,8 @@
 /* Этот файл сгенерирован программой 'FASTLIST.EXE' */
 
-short ofsmnem[26]={
+#include <cstdint>
+
+uint16_t ofsmnem[26]={
 	0x0000,0x0082,	//A B
 	0x00AF,0x0451,	//C D
 	0x048F,0x049E,	//E F

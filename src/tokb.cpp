@@ -1,4 +1,6 @@
 #define _TOKB_
+
+#include <cstdint>
 #include "tok.h"
 
 char badadr[]="Bad outrm value in outaddress();";
@@ -36,7 +38,7 @@ void reg2bits(ITOK *gtok,int razr);
 void cwpointr(ITOK *wtok,char *&wbuf,SINFO *wstr,int *otok,int npointr,int ureg);
 int CheckAddOnly();
 void optnumadd64(unsigned long long num,int r1,int r2,int vop);
-void CallExternProc(char *name);
+void callExternProc(const char *Name);
 void getinto_reg(int gtok,ITOK *gstok,char *&gbuf,SINFO *gstr,int razr,int reg);
 void intinstack(int addop);
 
@@ -53,17 +55,18 @@ extern void regmatherror();
 extern void DevideZero();
 extern void wordnotoper();
 
-unsigned long long li[]={0x1,0x2,0x4,0x8,0x10,0x20,0x40,0x80,0x100,0x200,0x400,
+uint64_t li[] = { 0x1,0x2,0x4,0x8,0x10,0x20,0x40,0x80,0x100,0x200,0x400,
 0x800,0x1000,0x2000,0x4000,0x8000,0x10000,0x20000,0x40000,0x80000,0x100000,
 0x200000,0x400000,0x800000,0x1000000,0x2000000,0x4000000,0x8000000,0x10000000,
-0x20000000,0x40000000,0x80000000,0x100000000I64,0x200000000I64,0x400000000I64
-,0x800000000I64,0x1000000000I64,0x2000000000I64,0x4000000000I64,0x8000000000I64
-,0x10000000000I64,0x20000000000I64,0x40000000000I64,0x80000000000I64
-,0x100000000000I64,0x200000000000I64,0x400000000000I64,0x800000000000I64
-,0x1000000000000I64,0x2000000000000I64,0x4000000000000I64,0x8000000000000I64
-,0x10000000000000I64,0x20000000000000I64,0x40000000000000I64,0x80000000000000I64
-,0x100000000000000I64,0x200000000000000I64,0x400000000000000I64,0x800000000000000I64
-,0x1000000000000000I64,0x2000000000000000I64,0x4000000000000000I64,0x8000000000000000I64};
+0x20000000,0x40000000,0x80000000,0x100000000,0x200000000,0x400000000
+,0x800000000,0x1000000000,0x2000000000,0x4000000000,0x8000000000
+,0x10000000000,0x20000000000,0x40000000000,0x80000000000
+,0x100000000000,0x200000000000,0x400000000000,0x800000000000
+,0x1000000000000,0x2000000000000,0x4000000000000,0x8000000000000
+,0x10000000000000,0x20000000000000,0x40000000000000,0x80000000000000
+,0x100000000000000,0x200000000000000,0x400000000000000,0x800000000000000
+,0x1000000000000000,0x2000000000000000,0x4000000000000000,0x8000000000000000
+};
 
 unsigned long leanum[24]={3,5,9,15,25,27,45,81,75,125,135,225,243,405,729,
 		375,675,1215,2187,625,1125,2025,3645,6561};
@@ -1509,7 +1512,7 @@ int numpointr=0;
 		if(tok==tk_pointer)cpointr(BX,numpointr);
 		if(tok==tk_floatvar&&tok2==tk_semicolon){
 			tok=tk_dwordvar;
-			do_e_axmath(1,r32,&ofsstr);
+			do_e_axmath(1, r32, ofsstr);
 		}
 		else doeaxfloatmath(tk_reg32,AX);
 	}
@@ -1556,7 +1559,7 @@ SINFO wstr;
 int sign=0,rettype,nrazr,posiblret,pointr=0;
 int hnumber=0;
 int ureg;
-char *ofsstr=NULL;
+std::string ofsstr;
 	wstr=strinf;
 	strinf.bufstr=NULL;
 	wtok=itok;
@@ -1608,7 +1611,7 @@ char *ofsstr=NULL;
 	}
 	nexttok();
 int numpointr=0;
-	ofsstr=GetLecsem(tk_assign,tk_semicolon);
+	ofsstr = getLexem(tk_assign, tk_semicolon);
 	nexttok();
 	convert_type(&sign,&rettype,&pointr);
 	while(tok==tk_mult){
@@ -1621,10 +1624,7 @@ int numpointr=0;
 	ureg=AX;
 	if(tok2==tk_assign){
 		ureg=hnumber=MultiAssign(razr,usereg,numpointr);
-		if(ofsstr){
-			free(ofsstr);
-			ofsstr=NULL;
-		}
+		ofsstr.clear();
 	}
 	else{
 		if(tok==tk_pointer){
@@ -1652,7 +1652,7 @@ int numpointr=0;
 				if(tok2==tk_semicolon&&usereg!=0&&usereg<4){
 					ureg=hnumber=usereg;
 //					if(tok==tk_beg&&itok.number<4)ureg=hnumber=itok.number;
-					getintoreg(usereg,r16,sign,&ofsstr);
+					getintoreg(usereg,r16,sign,ofsstr);
 				}
 /*				if(tok2==tk_semicolon&&tok==tk_beg&&usereg<2){
 					if((usereg==1&&itok.number<4)||usereg==0){
@@ -1661,18 +1661,22 @@ int numpointr=0;
 						break;
 					}
 				}*/
-				else doalmath(sign,&ofsstr);
-				if(ofsstr)IDZToReg(ofsstr,usereg,r8);
+				else
+				    doalmath(sign, ofsstr);
+                if (!ofsstr.empty())
+                    IDZToReg(ofsstr, usereg, r8);
 				break;
 			case tk_int:
 			case tk_word:
 				if(tok2==tk_semicolon&&usereg!=0){
 					ureg=hnumber=usereg;
 //					if(tok==tk_reg)ureg=hnumber=itok.number;
-					getintoreg(usereg,r16,sign,&ofsstr);
+                    getintoreg(usereg, r16, sign, ofsstr);
 				}
-				else do_e_axmath(sign,r16,&ofsstr);
-				if(ofsstr)IDZToReg(ofsstr,usereg,r16);
+				else
+				    do_e_axmath(sign, r16, ofsstr);
+                if (!ofsstr.empty())
+                    IDZToReg(ofsstr, usereg, r16);
 				break;
 			case tk_float:
 				doeaxfloatmath(tk_reg32,AX);
@@ -1681,19 +1685,16 @@ int numpointr=0;
 				if(tok2==tk_semicolon&&usereg!=0&&tok!=tk_floatvar){
 					ureg=hnumber=usereg;
 //					if(tok==tk_reg32)ureg=hnumber=itok.number;
-					getintoreg(usereg,r32,sign,&ofsstr);
+                    getintoreg(usereg, r32, sign, ofsstr);
 				}
 				else{
 					if(tok==tk_floatvar&&tok2==tk_semicolon)tok=tk_dwordvar;
-					do_e_axmath(sign,r32,&ofsstr);
+                    do_e_axmath(sign, r32, ofsstr);
 				}
-				if(ofsstr)IDZToReg(ofsstr,usereg,r32);
+                if (!ofsstr.empty())
+                    IDZToReg(ofsstr, usereg, r32);
 				break;
 		}
-	}
-	if(ofsstr){
-		free(ofsstr);
-		ofsstr=NULL;
 	}
 	switch ( nrazr ) {
 		case r8:
@@ -1806,7 +1807,7 @@ int numpointr=0;
 			}
 			break;
 		case tk_beg:
-			if(razr>r8&&wtok.number>3&&(wtok.number%4)==hnumber)preerror("register AH,BH,CH,DH should be first");
+			if(razr>r8&&wtok.number>3&&(wtok.number%4)==hnumber)prError("register AH,BH,CH,DH should be first");
 			if(wtok.number!=hnumber){
 				if(RegToReg(hnumber,wtok.number,r8)==NOINREG){
 					op(0x88);
@@ -1820,7 +1821,7 @@ int numpointr=0;
 			op(0xC0+wtok.number*8+hnumber);
 			break;
 		default:
-			thisundefined(wtok.name);
+			thisUndefined(wtok.name);
 	}
 	return hnumber;
 }
@@ -1834,7 +1835,7 @@ char *wbuf,*rbuf;
 SINFO wstr;
 int retrez=0,pointr=0,hnumber=EAX;
 int numpointr=0;
-char *ofsstr=NULL;
+std::string ofsstr;
 int reg1=idxregs[0],reg2=idxregs[1];
 #ifdef OPTVARCONST
 int initconst=FALSE;
@@ -1857,15 +1858,15 @@ unsigned int oaddESP=addESP;
 	switch(tok){
 		case tk_assign:	//=
 			if(!((tok2==tk_reg||tok2==tk_reg32)&&ScanTok3()==terminater)){
-				ofsstr=GetLecsem(terminater);
+				ofsstr = getLexem(terminater);
 			}
-			if(ofsstr){
+			if(!ofsstr.empty()){
 				int retreg;
-				if((retreg=CheckIDZReg(ofsstr,AX,razr))!=NOINREG){
+				if((retreg= checkIDZReg(ofsstr, AX, razr))!=NOINREG){
 					GetEndLex(terminater);
 					if(retreg==SKIPREG)retreg=AX;
 					if((GetRegVar(&wtok)&(1<<retreg))!=0){
-						free(ofsstr);
+						ofsstr.clear();
 						if(wbuf)free(wbuf);
 						if(wstr.bufstr)free(wstr.bufstr);
 						break;
@@ -1894,9 +1895,8 @@ unsigned int oaddESP=addESP;
 			}
 			if(tok2==tk_assign){
 				hnumber=MultiAssign(razr,USEALLREG,numpointr);
-				if(ofsstr){
-					free(ofsstr);
-					ofsstr=NULL;
+				if (!ofsstr.empty()) {
+					ofsstr.clear();
 				}
 				next=0;
 				goto getfromax;
@@ -2060,9 +2060,8 @@ regtovar:
 #ifdef OPTVARCONST
 						FreeGlobalConst();
 #endif
-						if(ofsstr){
-							free(ofsstr);
-							ofsstr=NULL;
+						if (!ofsstr.empty()) {
+							ofsstr.clear();
 						}
 						hnumber=0;
 						break;
@@ -2074,7 +2073,8 @@ regtovar:
 #ifdef OPTVARCONST
 						FreeGlobalConst();
 #endif
-						if(ofsstr)free(ofsstr);
+						if(!ofsstr.empty())
+							ofsstr.clear();
 						hnumber=0;
 						break;
 					case tk_longvar:
@@ -2104,15 +2104,15 @@ pushvar:
 labl1:
 						getfromAX=1;
 						if(rettype==tk_char||rettype==tk_byte){
-							if(hnumber==0)retrez=doalmath(sign,&ofsstr);
+							if (hnumber == 0)retrez = doalmath(sign, ofsstr);
 							else{
-								retrez=getintoreg(hnumber,razr,sign,&ofsstr);
+								retrez = getintoreg(hnumber, razr, sign, ofsstr);
 								posiblret=rettype;
 							}
 						}
 						else if(rettype==tk_int||rettype==tk_word){
-							if(hnumber==0)retrez=do_e_axmath(sign,r16,&ofsstr);
-							else retrez=getintoreg(hnumber,r16,sign,&ofsstr);
+							if (hnumber == 0)retrez = do_e_axmath(sign, r16, ofsstr);
+							else retrez = getintoreg(hnumber, r16, sign, ofsstr);
 						}
 						else if(rettype==tk_float||rettype==tk_double){
 							doeaxfloatmath(tk_fpust,AX,rettype==tk_float?0:4);
@@ -2127,8 +2127,8 @@ labl1:
 							hnumber=EAX;
 						}
 						else{
-							if(hnumber==0)retrez=do_e_axmath(sign,r32,&ofsstr);
-							else retrez=getintoreg(hnumber,r32,sign,&ofsstr);
+							if (hnumber == 0)retrez = do_e_axmath(sign, r32, ofsstr);
+							else retrez = getintoreg(hnumber, r32, sign, ofsstr);
 						}
 						next=0;
 						break;
@@ -2163,7 +2163,8 @@ getfromax:
 					op(0x89); op(wtok.rm+hnumber*8); // MOV [rmword],AX
 					outaddress(&wtok);
 				}
-				if(ofsstr)IDZToReg(ofsstr,hnumber,razr);
+				if (!ofsstr.empty())
+					IDZToReg(ofsstr, hnumber, razr);
 				else ClearReg(hnumber);
 				KillVar(wtok.name);
 				AddRegVar(hnumber,razr,&wtok);
@@ -2172,7 +2173,8 @@ getfromax:
 //				printf("vop=%d %s\n",vop,wtok.name);
 				if(vop==0)KillVar(wtok.name);
 			}
-			if(ofsstr)free(ofsstr);
+			if (!ofsstr.empty())
+				ofsstr.clear();
 			break;
 		case tk_minusminus: vop=0x8;
 		case tk_plusplus:
@@ -2247,7 +2249,7 @@ getfromax:
 					}
 				}
 				retrez=razr==r16?tk_reg:tk_reg32;
-				do_e_axmath(sign,razr,&ofsstr);
+				do_e_axmath(sign, razr, ofsstr);
 				if(addESP!=oaddESP&&am32&&ESPloc&&(wtok.type==tp_paramvar||wtok.type==tp_localvar))wtok.number+=addESP-oaddESP;
 axtovar:
 				CheckAllMassiv(wbuf,razr,&wstr,&wtok);
@@ -2319,7 +2321,7 @@ num:
 					default:
 defxor:
 						retrez=razr==r16?tk_reg:tk_reg32;
-						do_e_axmath(sign,razr,&ofsstr);
+						do_e_axmath(sign, razr, ofsstr);
 						if(addESP!=oaddESP&&am32&&ESPloc&&(wtok.type==tp_paramvar||wtok.type==tp_localvar))wtok.number+=addESP-oaddESP;
 						CheckAllMassiv(wbuf,razr,&wstr,&wtok);
 						op66(razr);
@@ -2354,8 +2356,10 @@ defxor:
 					goto getfromax;
 				}
 			}
-			if(hnumber==0)do_e_axmath(sign,razr,&ofsstr);
-			else getintoreg(hnumber,razr,sign,&ofsstr);
+			if (hnumber == 0)
+				do_e_axmath(sign, razr, ofsstr);
+			else
+				getintoreg(hnumber, razr, sign, ofsstr);
 			if(addESP!=oaddESP&&am32&&ESPloc&&(wtok.type==tp_paramvar||wtok.type==tp_localvar)){
 				wtok.number+=addESP-oaddESP;
 				oaddESP=addESP;
@@ -2393,10 +2397,10 @@ defxor:
 					next=0;
 					goto getfromax;
 				}
-				getintoreg_32(CX,razr,sign,&ofsstr);
+				getintoreg_32(CX, razr, sign, ofsstr);
 			}
 			else{
-				do_e_axmath(sign,razr,&ofsstr);
+				do_e_axmath(sign, razr, ofsstr);
 				if(optimizespeed)outword(0xC88B);	//mov CX,ax
 				else op(0x90+ECX);	//xchg ax,Cx
 				if(addESP!=oaddESP&&am32&&ESPloc&&(wtok.type==tp_paramvar||wtok.type==tp_localvar)){
@@ -2566,7 +2570,7 @@ defxor:
 			KillVar(wtok.name);
 			getoperand(am32==TRUE?ECX:BX);
 			if(itok2.type!=tp_stopper){
-				doalmath(0,&ofsstr);		// all shifts unsigned byte
+				doalmath(0, ofsstr);        // all shifts unsigned byte
 				ClearReg(AX);
 				ClearReg(CX);
 				outword(0xC188);	// MOV CL,AL
@@ -2594,7 +2598,7 @@ defxor:
 				}
 				else if((unsigned int)itok.number!=0){
 					if(chip<2&&razr==r16){
-						getintobeg(CL,&ofsstr);
+						getintobeg(CL, ofsstr);
 						op66(r16);
 						outseg(&wtok,2);
 						op(0xD3);	op(0x20+vop+wtok.rm);  /* SHL [rmword],CL */
@@ -2615,7 +2619,7 @@ defxor:
 			}
 			else{
 				if(tok!=tk_beg||(unsigned int)itok.number!=CL){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					warningreg(begs[1]);
 					ClearReg(CX);
 					next=0;
@@ -2647,7 +2651,7 @@ char *bbuf,*rbuf;
 int retrez=0,pointr=0,hnumber=AL;
 SINFO bstr;
 int numpointr=0;
-char *ofsstr=NULL;
+std::string ofsstr;
 #ifdef OPTVARCONST
 int initconst=FALSE;
 int operand;
@@ -2668,11 +2672,11 @@ unsigned int oaddESP=addESP;
 	switch(tok){
 		case tk_assign:
 			if(!((tok2==tk_reg||tok2==tk_reg32||tok2==tk_beg)&&ScanTok3()==terminater)){
-				ofsstr=GetLecsem(terminater);
+				ofsstr= getLexem(terminater);
 			}
-			if(ofsstr){
+			if (!ofsstr.empty()) {
 				int retreg;
-				if((retreg=CheckIDZReg(ofsstr,AX,r8))!=NOINREG){
+				if ((retreg = checkIDZReg(ofsstr, AX, r8)) != NOINREG) {
 					GetEndLex(terminater);
 					tok=tk_beg;
 					itok.number=retreg==SKIPREG?AX:retreg;
@@ -2688,9 +2692,8 @@ unsigned int oaddESP=addESP;
 			if(numpointr>itok.npointr)unuseableinput();
 			if(tok2==tk_assign){
 				hnumber=MultiAssign(r8,USEALLREG,numpointr);
-				if(ofsstr){
-					free(ofsstr);
-					ofsstr=NULL;
+				if (!ofsstr.empty()) {
+					ofsstr.clear();
 				}
 				next=0;
 				goto getfromax;
@@ -2753,12 +2756,16 @@ regtovar:
 					default:
 labl1:
 						if(rettype==tk_char||rettype==tk_byte){
-							if(hnumber==0)retrez=doalmath(sign,&ofsstr);
-							else retrez=getintobeg(hnumber,&ofsstr);
+							if (hnumber == 0)
+								retrez = doalmath(sign, ofsstr);
+							else
+								retrez = getintobeg(hnumber, ofsstr);
 						}
 						else if(rettype==tk_int||rettype==tk_word){
-							if(hnumber==0)retrez=do_e_axmath(sign,r16,&ofsstr);
-							else retrez=getintoreg(hnumber,r16,sign,&ofsstr);
+							if (hnumber == 0)
+								retrez = do_e_axmath(sign, r16, ofsstr);
+							else
+								retrez = getintoreg(hnumber, r16, sign, ofsstr);
 						}
 						else if(rettype==tk_float){
 							doeaxfloatmath(tk_reg32);
@@ -2766,8 +2773,10 @@ labl1:
 							hnumber=0;
 						}
 						else{
-							if(hnumber==0)retrez=do_e_axmath(sign,r32,&ofsstr);
-							else retrez=getintoreg(hnumber,r32,sign,&ofsstr);
+							if (hnumber == 0)
+								retrez = do_e_axmath(sign, r32, ofsstr);
+							else
+								retrez = getintoreg(hnumber, r32, sign, ofsstr);
 						}
 						getfromAX=1;
 						next=0;
@@ -2799,13 +2808,16 @@ getfromax:
 					op(btok.rm+hnumber*8);
 					outaddress(&btok);
 				}
-				if(ofsstr)IDZToReg(ofsstr,hnumber,r8);
-				else ClearReg(hnumber);
+				if (!ofsstr.empty())
+					IDZToReg(ofsstr, hnumber, r8);
+				else
+					ClearReg(hnumber);
 				KillVar(btok.name);
 				AddRegVar(hnumber,r8,&btok);
 			}
 			else if(vop)KillVar(btok.name);
-			if(ofsstr)free(ofsstr);
+			if (!ofsstr.empty())
+				ofsstr.clear();
 			break;
 		case tk_multequals:
 			getoperand(am32==TRUE?EAX:BX);
@@ -2821,7 +2833,7 @@ getfromax:
 				}
 #endif
 			}
-			doalmath(sign,&ofsstr);
+			doalmath(sign, ofsstr);
 			hnumber=0;
 			if(addESP!=oaddESP&&am32&&ESPloc&&(btok.type==tp_paramvar||btok.type==tp_localvar)){
 				btok.number+=addESP-oaddESP;
@@ -2848,11 +2860,11 @@ getfromax:
 					}
 #endif
 				}
-				getintobeg(CL,&ofsstr);
+				getintobeg(CL, ofsstr);
 				warningreg(begs[1]);
 			}
 			else{
-				doalmath(sign,&ofsstr);
+				doalmath(sign, ofsstr);
 				outword(0xC88A);	//mov Cl,al
 				if(addESP!=oaddESP&&am32&&ESPloc&&(btok.type==tp_paramvar||btok.type==tp_localvar)){
 					btok.number+=addESP-oaddESP;
@@ -2898,7 +2910,7 @@ getfromax:
 						goto num;
 					}
 				}
-				doalmath(sign,&ofsstr);
+				doalmath(sign, ofsstr);
 				if(addESP!=oaddESP&&am32&&ESPloc&&(btok.type==tp_paramvar||btok.type==tp_localvar))btok.number+=addESP-oaddESP;
 				CheckAllMassiv(bbuf,1,&bstr,&btok);
 				outseg(&btok,2);
@@ -2945,7 +2957,7 @@ num:
 					case tk_seg: segbyteerror(); break;
 					default:
 						retrez=tk_reg;
-						doalmath(sign,&ofsstr);
+						doalmath(sign, ofsstr);
 						CheckAllMassiv(bbuf,1,&bstr,&btok);
 						outseg(&btok,2);
 						op(vop); op(btok.rm);  /* ADD [anybyte],AL */
@@ -2996,7 +3008,7 @@ num:
 			KillVar(btok.name);
 			getoperand(am32==TRUE?ECX:BX);
 			if(itok2.type!=tp_stopper){
-				doalmath(0,&ofsstr);		// all shifts unsigned byte
+				doalmath(0, ofsstr);        // all shifts unsigned byte
 				outword(0xC188);	// MOV CL,AL
 				if(addESP!=oaddESP&&am32&&ESPloc&&(btok.type==tp_paramvar||btok.type==tp_localvar))btok.number+=addESP-oaddESP;
 				CheckAllMassiv(bbuf,1,&bstr,&btok);
@@ -3023,7 +3035,7 @@ num:
 				else if((unsigned int)itok.number!=0){
 					CheckAllMassiv(bbuf,1,&bstr,&btok);
 					if(chip<2){
-						getintobeg(CL,&ofsstr);
+						getintobeg(CL, ofsstr);
 						outseg(&btok,2);
 						op(0xD2);	op(0x20+vop+btok.rm);  /* SHL [byte],CL */
 						outaddress(&btok);
@@ -3042,7 +3054,7 @@ num:
 			}
 			else{
 				if(tok!=tk_beg||(unsigned int)itok.number!=CL){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					warningreg(begs[1]);
 					ClearReg(CX);
 					next=0;
@@ -3409,7 +3421,7 @@ unsigned long long num;
 	return vop;
 }
 
-int do_e_axmath(int sign,int razr,char **ofsstr)
+int do_e_axmath(int sign, int razr, const std::string &ofsstr)
 {
 int negflag=0,next=0;
 int expand=FALSE,rettype;
@@ -3548,10 +3560,6 @@ ITOK oitok;
 				procdo(sign!=0?(razr==r16?tk_int:tk_long):(razr==r16?tk_word:tk_dword));
 			}
 			nexttok();
-			if(*ofsstr){
-				free(*ofsstr);
-				*ofsstr=NULL;
-			}
 			break;
 		case tk_new:
 			donew();
@@ -3559,10 +3567,6 @@ ITOK oitok;
 #ifdef OPTVARCONST
 			FreeGlobalConst();
 #endif
-			if(*ofsstr){
-				free(*ofsstr);
-				*ofsstr=NULL;
-			}
 			nexttok();
 			break;
 		default:
@@ -3717,7 +3721,7 @@ defreg32:
 					case tk_beg:
 					case tk_bytevar:
 defxor:
-						getintoreg_32(CX,razr,sign,&ofsstr,FALSE);
+						getintoreg_32(CX, razr, sign, ofsstr, FALSE);
 						op66(razr);
 						op(0x01+vop);
 						op(0xC8);	/* OPT AX,CX */
@@ -3868,7 +3872,7 @@ mulreg32:
 defmul:
 						i=EDX;
 mulreg:
-						getintoreg_32(i,razr,sign,&ofsstr,FALSE);
+						getintoreg_32(i, razr, sign, ofsstr, FALSE);
 					 	op66(razr);
 						op(0xF7);
 						if(sign)op(0xE8+i);  /* IMUL i */
@@ -3893,7 +3897,7 @@ mulreg:
 					razr==r16?outword((unsigned int)itok.number):outdword(itok.number);
 				}
 				else{
-					getintoreg_32(CX,razr,sign,&ofsstr,FALSE);
+					getintoreg_32(CX, razr, sign, ofsstr, FALSE);
 					NegReg(razr,ECX);
 				 	op66(razr);
 					op(0x01+vop);	/* opt AX,CX */
@@ -3916,7 +3920,7 @@ mulreg:
 						else{
 							if((unsigned int)itok.number==1)outdword(0xd213c001);	//ADD AX,AX ADC DX,DX
 							else if((unsigned int)itok.number!=0){
-								getintobeg(CL,&ofsstr);
+								getintobeg(CL, ofsstr);
 								outdword(0xd213c001);	//ADD AX,AX ADC DX,DX
 								outword(0xfae2);  //LOOP -6
 								warningreg(begs[1]);
@@ -3934,7 +3938,7 @@ mulreg:
 				tok=tk_minus; 	// do optimization 286+ here later
 llminus:
 				if(!((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&itok.number==1)){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 			 		warningreg(begs[1]);
 				}
 				else getoperand();
@@ -3979,7 +3983,7 @@ llminus:
 							}
 							else{
 								next=0;
-								getintobeg(CL,&ofsstr);
+								getintobeg(CL, ofsstr);
 								warningreg(begs[1]);
 								op(0xd1); op(0xea+vop);//s?r dx,1
 								outdword(0xfae2d8d1);  //rcr ax,1 LOOP -6
@@ -4000,7 +4004,7 @@ llminus:
 				tok=tk_minus;  // do optimization 286+ here later
 rrminus:
 				if(!((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&itok.number==1)){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 			 		warningreg(begs[1]);
 				}
 				else getoperand();
@@ -4160,7 +4164,7 @@ beg1:
 	}
 }
 
-int doalmath(int sign,char **ofsstr)
+int doalmath(int Sign, const std::string &ofsstr)
 {
 int negflag=0,i=0;
 int rettype=tk_beg;
@@ -4181,7 +4185,7 @@ int rettype=tk_beg;
 	switch(tok){
 		case tk_number:
 			op(0xB0);	//mov AL,num
-			i=CalcNumber(sign);
+			i=CalcNumber(Sign);
 			op(i);
 			ConstToReg(i,AL,r8);
 			break;
@@ -4195,12 +4199,8 @@ int rettype=tk_beg;
 		case tk_undefproc:
 		case tk_declare:
 			if(itok.flag&f_retproc)rettype=(itok.flag&f_retproc)/256+tk_overflowflag-1;
-			if((!i)||macros(sign!=0?tk_char:tk_byte)==0)procdo(sign!=0?tk_char:tk_byte);
+			if((!i)||macros(Sign!=0?tk_char:tk_byte)==0)procdo(Sign!=0?tk_char:tk_byte);
 			nexttok();
-			if(*ofsstr){
-				free(*ofsstr);
-				*ofsstr=NULL;
-			}
 			break;
 		default:
 			SINFO bstr=strinf;
@@ -4221,7 +4221,7 @@ int rettype=tk_beg;
 		setzeroflag=TRUE;
 	}
 	if(itok.type!=tp_stopper&&tok!=tk_eof&&itok.type!=tp_compare){
-		doalmath2(sign);
+		doalmath2(Sign);
 		rettype=tk_beg;
 	}
 	return rettype;
@@ -4497,7 +4497,7 @@ defbeg:
 					switch(tok){
 						case tk_rmnumber:
 						case tk_postnumber:
-							getintoreg_32(CX,r16,sign,&ofsstr,FALSE);
+							getintoreg_32(CX, r16, sign, ofsstr, FALSE);
 							if(sign)outword(0xF9F6);  // IDIV CL
 							else outword(0xF1F6);	// DIV CL
 							setzeroflag=FALSE;
@@ -4649,7 +4649,7 @@ num_imul:
 						break;
 					case tk_rmnumber:
 					case tk_postnumber:
-						getintoreg_32(CX,r16,sign,&ofsstr,FALSE);
+						getintoreg_32(CX, r16, sign, ofsstr, FALSE);
 						if(sign)outword(0xE9F6); // IMUL CL
 						else outword(0xE1F6);	// MUL CL
 						setzeroflag=FALSE;
@@ -4744,7 +4744,7 @@ defmul:
 					op((unsigned int)itok.number);
 				}
 				else{
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					if(optimizespeed&&(chip==5||chip==6)){
 						op(0x80);
 						outdword(0xC1FEFFE1);	//and CL,-1 inc CL
@@ -4787,7 +4787,7 @@ defmul:
 				tok=tk_minus; 	// need 286+ opt some time
 llminus:
 				if(!((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&itok.number==1)){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 			 		warningreg(begs[1]);
 				}
 				else getoperand();
@@ -4825,7 +4825,7 @@ unsigned long ii;
 int rettype=tk_reg;
 int rrettype,pointr=0;
 int numpointr=0;
-char *ofsstr=NULL;
+std::string ofsstr;
 	if(reg==reg1){
 		reg1=idxregs[1];
 		reg2=idxregs[2];
@@ -4838,7 +4838,7 @@ char *ofsstr=NULL;
 		case tk_assign://=
 			if(am32)idxregs[4]=reg;
 			if(!((tok2==tk_reg||tok2==tk_reg32||tok2==tk_beg)&&ScanTok3()==terminater)){
-				ofsstr=GetLecsem(terminater);
+				ofsstr= getLexem(terminater);
 			}
 			else{
 				nexttok();
@@ -4858,9 +4858,9 @@ char *ofsstr=NULL;
 				if(am32)idxregs[4]=255;
 				break;
 			}
-			if(ofsstr){
+			if(!ofsstr.empty()){
 				int retreg;
-				if((retreg=CheckIDZReg(ofsstr,reg,razr))!=NOINREG){
+				if((retreg= checkIDZReg(ofsstr, reg, razr))!=NOINREG){
 					GetEndLex(terminater);
 					if(razr==r16)tok=tk_reg;
 					else tok=tk_reg32;
@@ -4874,9 +4874,9 @@ char *ofsstr=NULL;
 				if(am32)idxregs[4]=255;
 				doeaxfloatmath(tk_reg32,reg,rrettype==tk_float?0:4);
 				next=0;
-				if(ofsstr){
+				if (!ofsstr.empty()) {
 					IDZToReg(ofsstr,reg,razr);
-					free(ofsstr);
+					ofsstr.clear();
 				}
 				break;
 			}
@@ -4888,9 +4888,8 @@ char *ofsstr=NULL;
 			if(tok2==tk_assign){
 				int hnumber=MultiAssign(razr,USEALLREG,numpointr);
 //				puts("end MultAssign");
-				if(ofsstr){
-					free(ofsstr);
-					ofsstr=NULL;
+				if (!ofsstr.empty()) {
+					ofsstr.clear();
 				}
 				if(reg!=hnumber){
 					op66(razr);
@@ -4921,23 +4920,25 @@ char *ofsstr=NULL;
 #ifdef OPTVARCONST
 				FreeGlobalConst();
 #endif
-				if(ofsstr){
-					free(ofsstr);
-					ofsstr=NULL;
+				if (!ofsstr.empty()) {
+					ofsstr.clear();
 				}
 				break;
 			}
 nn1:
 			if(am32)idxregs[4]=255;
 			if(reg==AX){
-				if(rrettype==tk_char||rrettype==tk_byte)rettype=doalmath(sign,&ofsstr);
-				else if(rrettype==tk_int||rrettype==tk_word)rettype=do_e_axmath(sign,r16,&ofsstr);
-				else rettype=do_e_axmath(sign,r32,&ofsstr);
+				if (rrettype == tk_char || rrettype == tk_byte)
+					rettype = doalmath(sign, ofsstr);
+				else if (rrettype == tk_int || rrettype == tk_word)
+					rettype = do_e_axmath(sign, r16, ofsstr);
+				else
+					rettype = do_e_axmath(sign, r32, ofsstr);
 				convert_returnvalue(razr==r16?tk_word:tk_dword,rrettype);
 			}
 			else{
 				if(rrettype==tk_char||rrettype==tk_byte&&reg<=BX){
-					rettype=getintobeg(reg,&ofsstr);
+					rettype = getintobeg(reg, ofsstr);
 					if(itok.type!=tp_stopper&&tok!=tk_eof){
 						dobegmath(reg);
 						rettype=tk_beg;
@@ -4951,7 +4952,7 @@ nn1:
 				else{
 					if(rrettype==tk_int||rrettype==tk_word)next=r16;
 					else next=r32;
-					rettype=getintoreg(reg,next,sign,&ofsstr);
+					rettype = getintoreg(reg, next, sign, ofsstr);
 					if(next==r16&&razr==r32){
 						op66(r32);
 						op(0x0F);
@@ -4962,9 +4963,9 @@ nn1:
 				}
 			}
 			next=0;
-			if(ofsstr){
+			if (!ofsstr.empty()) {
 				IDZToReg(ofsstr,reg,razr);
-				free(ofsstr);
+				ofsstr.clear();
 			}
 			break;
 		case tk_plusplus: op66(razr); op(0x40+reg);
@@ -5073,7 +5074,7 @@ swapreg:
 				if(tok==tk_plusequals)tok=tk_plus;
 				else tok=tk_minus;
 				if(reg==EAX)do_e_axmath2(0,razr,0);
-				else doregmath_32(reg,razr,0,&ofsstr);
+				else doregmath_32(reg, razr, 0, ofsstr);
 				next=0;
 				break;
 			}
@@ -5114,7 +5115,7 @@ swapreg:
 						}
 						else MovRegNum(razr,postnumflag&f_reloc,ii,sign);
 						if(sign==EAX)do_e_axmath2(0,razr,0);
-						else doregmath_32(sign,razr,0,&ofsstr);
+						else doregmath_32(sign, razr, 0, ofsstr);
 						itok.number=sign;
 						goto addreg;
 					}
@@ -5207,12 +5208,12 @@ unsigned char oaddstack;
 				case tk_beg:
 defadd:
 					if(reg==AX){
-						getintoreg_32(ECX,razr,sign,&ofsstr);
-						doregmath_32(ECX,razr,sign,&ofsstr);
+						getintoreg_32(ECX, razr, sign, ofsstr);
+						doregmath_32(ECX, razr, sign, ofsstr);
 						sign=CX;	//sign исп как пром регистр
 					}
 					else{
-						do_e_axmath(0,razr,&ofsstr);
+						do_e_axmath(0, razr, ofsstr);
 						sign=EAX;
 					}
 					warningreg(regs[razr/2-1][sign]);
@@ -5261,7 +5262,7 @@ defadd:
 			}
 			else if(reg!=CX){
 				if(!(itok2.type==tp_stopper&&(tok==tk_beg||tok==reg||tok==tk_reg32)&&itok.number==CL)){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					dobegmath(CL);
 					warningreg(begs[1]);
 					ClearReg(CL);
@@ -5284,7 +5285,7 @@ shiftcl:
 					if(reg==EAX)sign=ECX;
 					MovRegNum(razr,postnumflag&f_reloc,ii,sign);
 					if(sign==EAX)do_e_axmath2(0,razr,0);
-					else doregmath_32(ECX,razr,0,&ofsstr);
+					else doregmath_32(ECX, razr, 0, ofsstr);
 					ConstToReg(ii,sign,razr);
 					goto mulreg;
 				}
@@ -5295,12 +5296,12 @@ shiftcl:
 				if(itok2.type==tp_stopper)next=(unsigned char)MulReg(reg,razr);
 				else{
 					if(reg==AX){
-						getintoreg_32(ECX,razr,sign,&ofsstr);
-						doregmath_32(ECX,razr,sign,&ofsstr);
+						getintoreg_32(ECX, razr, sign, ofsstr);
+						doregmath_32(ECX, razr, sign, ofsstr);
 						sign=CX;	//sign исп как пром регистр
 					}
 					else{
-						do_e_axmath(0,razr,&ofsstr);
+						do_e_axmath(0, razr, ofsstr);
 						sign=EAX;
 					}
 mulreg:
@@ -5378,7 +5379,7 @@ mulreg:
 				op66(razr);
 				op(0x50+reg);	//push reg
 				addESP+=razr==r16?2:4;
-				do_e_axmath(0,razr,&ofsstr);
+				do_e_axmath(0, razr, ofsstr);
 divreg:
 				op66(razr);
 				sign=reg;
@@ -5557,12 +5558,12 @@ int vop=0,i=0,sign=0;
 int rettype=tk_beg,pointr=0;;
 int rrettype=tk_byte;
 int numpointr=0;
-char *ofsstr=NULL;
+	std::string ofsstr;
 	nexttok();
 	switch(tok){
 		case tk_assign:
 			if(!((tok2==tk_reg||tok2==tk_reg32||tok2==tk_beg)&&ScanTok3()==terminater)){
-				ofsstr=GetLecsem(terminater);
+				ofsstr = getLexem(terminater);
 			}
 			else{
 				nexttok();
@@ -5570,9 +5571,9 @@ char *ofsstr=NULL;
 				waralreadinitreg(begs[itok.number],begs[beg]);
 				break;
 			}
-			if(ofsstr){
+			if (!ofsstr.empty()) {
 				int retreg;
-				if((retreg=CheckIDZReg(ofsstr,beg,r8))!=NOINREG){
+				if((retreg= checkIDZReg(ofsstr, beg, r8))!=NOINREG){
 					GetEndLex(terminater);
 					tok=tk_beg;
 					itok.number=retreg==SKIPREG?beg:retreg;
@@ -5588,32 +5589,34 @@ char *ofsstr=NULL;
 			if(numpointr>itok.npointr)unuseableinput();
 			if(tok2==tk_assign){
 				int hnumber=MultiAssign(r8,(beg>3?beg-4:beg),numpointr);
-				if(ofsstr){
-					free(ofsstr);
-					ofsstr=NULL;
+				if (!ofsstr.empty()) {
+					ofsstr.clear();
 				}
 				if(beg!=hnumber){
 					op(0x88);
 					op(0xC0+beg+hnumber*8);	//mov beg,AL
 				}
 				next=0;
-				if(ofsstr){
+				if (!ofsstr.empty()) {
 					IDZToReg(ofsstr,beg,r8);
-					free(ofsstr);
+					ofsstr.clear();
 				}
 				break;
 			}
 			if(tok==tk_pointer)cpointr(am32==TRUE?(beg>3?beg-4:beg):BX,numpointr);
 nn1:
 			if(beg==AL){
-				if(rrettype==tk_char||rrettype==tk_byte)rettype=doalmath(sign,&ofsstr);
-				else if(rrettype==tk_int||rrettype==tk_word)rettype=do_e_axmath(sign,r16,&ofsstr);
-				else rettype=do_e_axmath(sign,r32,&ofsstr);
+				if (rrettype == tk_char || rrettype == tk_byte)
+					rettype = doalmath(sign, ofsstr);
+				else if (rrettype == tk_int || rrettype == tk_word)
+					rettype = do_e_axmath(sign, r16, ofsstr);
+				else
+					rettype = do_e_axmath(sign, r32, ofsstr);
 				next=0;
 			}
 			else{
 				if(rrettype==tk_char||rrettype==tk_byte||beg>BL){
-					rettype=getintobeg(beg,&ofsstr);
+					rettype = getintobeg(beg, ofsstr);
 					if(itok.type!=tp_stopper&&tok!=tk_eof){
 						dobegmath(beg);
 						rettype=tk_beg;
@@ -5622,13 +5625,13 @@ nn1:
 				else{
 					if(rrettype==tk_int||rrettype==tk_word)next=r16;
 					else next=r32;
-					rettype=getintoreg(beg,next,sign,&ofsstr);
+					rettype = getintoreg(beg, next, sign, ofsstr);
 				}
 				next=0;
 			}
-			if(ofsstr){
+			if(!ofsstr.empty()){
 				IDZToReg(ofsstr,beg,r8);
-				free(ofsstr);
+				ofsstr.clear();
 			}
 			break;
 		case tk_plusplus: op(0xFE); op(0xC0+beg);
@@ -5681,12 +5684,12 @@ nn1:
 			getoperand(beg==BL||beg==BH?SI:BX);
 			if(itok2.type==tp_opperand&&tok!=tk_number){
 				if(beg==AL){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					dobegmath(CL);
 					sign=CL;	//sign исп как пром регистр
 				}
 				else{
-					doalmath(0,&ofsstr);
+					doalmath(0, ofsstr);
 					sign=EAX;
 				}
 				warningreg(begs[sign]);
@@ -5798,7 +5801,7 @@ shiftbeg:
 					}
 					else{
 						ClearReg(CL);
-						getintobeg(CL,&ofsstr);
+						getintobeg(CL, ofsstr);
 						dobegmath(CL);
 						next=0;
 						warningreg(begs[1]);
@@ -5820,7 +5823,7 @@ void doseg(int seg)
 unsigned char next=1;
 int numpointr=0;
 char *ofsstr=NULL;
-	if(seg==CS)preerror("CS not used for destention");
+	if(seg==CS)prError("CS not used for destention");
 	if(seg==FS||seg==GS)if(cpu<3)cpu=3;
 	if(seg==SS)RestoreStack();
 	nexttok();
@@ -5890,7 +5893,7 @@ getfromreg:
 		}
 		else{
 segax:
-			do_e_axmath(0,r16,&ofsstr);
+			do_e_axmath(0, r16, ofsstr);
 			op(0x8E); 	/* MOV SEG,AX */
 			op(0xC0+seg*8);
 			next=0;
@@ -5922,7 +5925,8 @@ segax:
 				PopSeg(seg);
 				PopSeg(itok.number);
 				break;
-			default: preerror("Only int, word variables valid for segment register ><");
+			default:
+				prError("Only int, word variables valid for segment register ><");
 				break;
 		}
 	}
@@ -5956,7 +5960,7 @@ void PopSeg(int seg)
 
 // =============== doregmath_32(), dobegmath() ===============
 
-void doregmath_32(int reg,int razr,int sign,char **ofsstr,int fdiv)  // math done is on all regs except AX
+void doregmath_32(int reg, int razr, int sign, const std::string &ofsstr, int fdiv)  // math done is on all regs except AX
 // all other registers preserved
 {
 int vop,i,optnum,negflag=FALSE;
@@ -6128,10 +6132,6 @@ addax:
 					case tk_declare:
 						procdo(razr==r16?tk_word:tk_dword);
 						i=EAX;
-						if(*ofsstr!=NULL){
-							free(*ofsstr);
-							*ofsstr=NULL;
-						}
 						goto defxormin;
 					default:
 						if(reg==ECX){
@@ -6522,7 +6522,7 @@ int vop,i,optnum=FALSE,negflag=FALSE;
 
 // ============= getintoreg_32(), getintobeg() ============
 
-int getintoreg_32(int reg,int razr,int sign,char **ofsstr,int useloop)	// get into word reg (except AX) with enum
+int getintoreg_32(int reg, int razr, int sign, const std::string &ofsstr, int useloop)	// get into word reg (except AX) with enum
 {
 int negflag=0,next=1,i=0;
 int swap=0,oflag=0;
@@ -6841,10 +6841,6 @@ dwordvar:
 			if((!i)||macros(razr==r16?tk_word:tk_dword)==0)procdo(razr==r16?tk_word:tk_dword);
 			itok.number=0;
 			tok=(razr==r16?tk_reg:tk_reg32);
-			if(*ofsstr!=NULL){
-				free(*ofsstr);
-				ofsstr=NULL;
-			}
 //		printf("tok=%d num=%d tok2=%d\n",tok,itok.number,tok2);
 			goto loopswitch;
 //			break;
@@ -6874,7 +6870,7 @@ dwordvar:
 	return rettype;
 }
 
-int getintobeg(int beg,char **ofsstr)	// get into beg (CL,DL,BL not others) with enum
+int getintobeg(int beg, const std::string &ofsstr)	// get into beg (CL,DL,BL not others) with enum
 {
 int negflag=0,i=0;
 int rettype=tk_beg;
@@ -7019,10 +7015,6 @@ int rettype=tk_beg;
 			op(0xc0+beg);
 			nexttok();
 			RegToReg(beg,AL,r8);
-			if(*ofsstr){
-				free(*ofsstr);
-				*ofsstr=NULL;
-			}
 			break;
 		default: valueexpected();	nexttok(); return 0;
 	}
@@ -7059,7 +7051,7 @@ int rm=outtok->rm;
 		}
 		else{
 			rm&=rm_mod11;
-			if(rm==rm_mod11)internalerror(badadr);
+			if(rm==rm_mod11)internalError(badadr);
 			else if(rm==rm_mod10){
 				if(outtok->post==UNDEF_OFSET){
 					AddUndefOff(2,outtok->name);
@@ -7090,7 +7082,7 @@ int rm=outtok->rm;
 				}
 			}
 			rm&=rm_mod11;
-			if(rm==rm_mod11)internalerror(badadr);
+			if(rm==rm_mod11)internalError(badadr);
 			else if(rm==rm_mod10){
 				if(outtok->post==UNDEF_OFSET){
 					AddUndefOff(2,outtok->name);
@@ -7128,7 +7120,7 @@ int type=tk_floatvar;
 	wbuf=bufrm;
 	bufrm=NULL;
 	KillVar(itok.name);
-char *ofsstr=NULL;
+	std::string ofsstr;
 	nexttok();
 	switch(tok){
 		case tk_assign:	//=
@@ -7150,9 +7142,12 @@ char *ofsstr=NULL;
 					}
 				}
 				getfromEAX=1;
-				if(rettype==tk_char||rettype==tk_byte)doalmath(sign,&ofsstr);
-				else if(rettype==tk_int||rettype==tk_word)do_e_axmath(sign,r16,&ofsstr);
-				else if(rettype==tk_long||rettype==tk_dword)do_e_axmath(sign,r32,&ofsstr);
+				if (rettype == tk_char || rettype == tk_byte)
+					doalmath(sign, ofsstr);
+				else if (rettype == tk_int || rettype == tk_word)
+					do_e_axmath(sign, r16, ofsstr);
+				else if (rettype == tk_long || rettype == tk_dword)
+					do_e_axmath(sign, r32, ofsstr);
 				else goto labl1;
 			}
 			else{
@@ -8420,9 +8415,9 @@ void setwordpost(ITOK *stok)						/* for post word num setting */
 //			printf("Add tok=%d %s\n",stok->rec->rectok,stok->rec->recid);
 //		printf("rec=%08X\n",stok->rec);
 		if(stok->rec->rectok==tk_structvar&&stok->rec->recsib==tp_gvar){
-			(postbuf+posts)->num=(int)stok->rec;//02.09.05 17:11 ->right;
+			(postbuf+posts)->num=(uintptr_t)stok->rec;//02.09.05 17:11 ->right;
 		}
-		else (postbuf+posts)->num=(int)stok->rec;
+		else (postbuf+posts)->num=(uintptr_t)stok->rec;
 	}
 	else if(stok->post>=CODE_SIZE&&stok->post<=STACK_SIZE32)(postbuf+posts)->type=stok->post;
 	else (postbuf+posts)->type=(unsigned short)(am32==FALSE?POST_VAR:POST_VAR32);
@@ -8552,7 +8547,7 @@ void NegReg(int razr,int reg)
 
 int RshiftReg(int razr,int reg,int sign)
 {
-char *ofsstr=NULL;
+	std::string ofsstr;
 	if(tok==tk_number){
 		if((unsigned int)itok.number==1){
 			op66(razr);
@@ -8580,7 +8575,7 @@ char *ofsstr=NULL;
 	}
 	else{
 rrshift:
-		getintobeg(CL,&ofsstr);
+		getintobeg(CL, ofsstr);
 		warningreg(begs[1]);
 rshift:
 		op66(razr);
@@ -8595,7 +8590,7 @@ int CheckMinusNum()
 	if(tok==tk_minus&&tok2==tk_number){
 		nexttok();
 		if(itok.rm==tk_float)itok.number|=0x80000000;
-		else if(itok.rm==tk_double)itok.lnumber|=0x8000000000000000I64;
+		else if(itok.rm==tk_double)itok.lnumber|=0x8000000000000000;
 		else itok.lnumber=-itok.lnumber;
 		return TRUE;
 	}
@@ -8606,7 +8601,7 @@ int MulReg(int reg,int razr)
 {
 int next=1,i=0;
 int ii=0;
-char *ofsstr=NULL;
+	std::string ofsstr;
 	switch(tok){
 		case tk_number:
 			RegMulNum(reg,itok.number,razr,0,&i,itok.flag);
@@ -8706,7 +8701,7 @@ defreg32:
 defmul1:
 			i=EDX;
 			if(reg==EDX)i=ECX;
-			getintoreg_32(i,razr,0,&ofsstr,FALSE);
+			getintoreg_32(i, razr, 0, ofsstr, FALSE);
 defmul:
 		 	op66(razr);
 			outword(0xAF0F);
@@ -8723,7 +8718,7 @@ defmul:
 void DivMod(int vop,int sign,int razr,int expand)
 {
 int i,next;
-char *ofsstr=NULL;
+	std::string ofsstr;
 	if(tok==tk_bits){
 		i=itok.bit.siz+itok.bit.ofs;
 		if(i<=64)next=r64;
@@ -8886,7 +8881,7 @@ divin:
 			case tk_reg:
 				if(razr==r32){
 					i=itok.number;
-					getintoreg_32(i,r32,0,&ofsstr,FALSE);
+					getintoreg_32(i, r32, 0, ofsstr, FALSE);
 					if(expand==FALSE)ClearDX(razr,sign);
 					op66(r32);
 					op(0xF7);
@@ -8941,7 +8936,7 @@ unsigned char oaddstack;
 			case tk_postnumber:
 			case tk_apioffset:
 defdiv:
-				getintoreg_32(CX,razr,0,&ofsstr,FALSE);
+				getintoreg_32(CX, razr, 0, ofsstr, FALSE);
 				if(expand==FALSE)ClearDX(razr,sign);
 		 		op66(razr);
 				if(sign)outword(0xF9F7);  /* IDIV CX */
@@ -9028,7 +9023,7 @@ void DivNum2(unsigned long num,int razr,int sign)
 	ClearReg(AX);
 }
 
-int getintoreg(int reg,int razr,int sign,char **ofsstr)
+int getintoreg(int reg, int razr, int sign, const std::string &ofsstr)
 {
 ITOK oitok,oitok2;
 int oline,oendinptr;
@@ -9180,7 +9175,7 @@ SINFO wstr;
 int razr,i,sign=0,posiblret,pointr=0;
 unsigned int rettype;
 int numpointr=0;
-char *ofsstr=NULL;
+	std::string ofsstr;
 	posiblret=rettype=tk_dword;
 	razr=r32;
 	i=itok.bit.siz+itok.bit.ofs;
@@ -9238,10 +9233,14 @@ char *ofsstr=NULL;
 		}
 		else{
 labl1:
-			if(rettype==tk_char||rettype==tk_byte)doalmath(sign,&ofsstr);
-			else if(rettype==tk_int||rettype==tk_word)do_e_axmath(sign,r16,&ofsstr);
-			else if(rettype==tk_float)doeaxfloatmath(tk_reg32,AX);
-			else do_e_axmath(sign,r32,&ofsstr);
+			if (rettype == tk_char || rettype == tk_byte)
+				doalmath(sign, ofsstr);
+			else if (rettype == tk_int || rettype == tk_word)
+				do_e_axmath(sign, r16, ofsstr);
+			else if (rettype == tk_float)
+				doeaxfloatmath(tk_reg32, AX);
+			else
+				do_e_axmath(sign, r32, ofsstr);
 			convert_returnvalue(posiblret,rettype);
 			CheckAllMassiv(wbuf,razr,&wstr,&wtok);
 axtobit:
@@ -9781,7 +9780,7 @@ SINFO wstr;
 int retrez=0,pointr=0;
 int numpointr=0;
 int reg;
-char *ofsstr=NULL;
+	std::string ofsstr;
 int reg1=idxregs[0],reg2=idxregs[1];
 	rettype=tk_qword;
 	sign=0;
@@ -9838,7 +9837,7 @@ int reg1=idxregs[0],reg2=idxregs[1];
 								}
 								break;
 							}
-							if(itok.lnumber==0xFFFFFFFFFFFFFFFFI64){
+							if(itok.lnumber==0xFFFFFFFFFFFFFFFF){
 		 						CheckAllMassiv(wbuf,8,&wstr,&wtok);
 								for(i=0;i<2;i++){
 									op66(r32);
@@ -10206,7 +10205,7 @@ defxor:
 			reg=ECX|(EAX*256);
 			getintoreg64(reg);
 			doregmath64(reg);
-			CallExternProc("__llmul");
+			callExternProc("__llmul");
 			next=0;
 			goto getfromax;
 		case tk_divequals:
@@ -10319,7 +10318,7 @@ divcont:
 				compressoffset(&wtok);
 				reg=EDX;
 			}
-			CallExternProc("__lludiv");
+			callExternProc("__lludiv");
 			addESP-=8;
 			wtok.number-=4;
 			compressoffset(&wtok);
@@ -10397,7 +10396,7 @@ divcont:
 		case tk_llequals:
 			getoperand(am32==TRUE?ECX:BX);
 			if(itok2.type!=tp_stopper){
-				getintobeg(CL,&ofsstr);
+				getintobeg(CL, ofsstr);
 				ClearReg(CX);
 				warningreg(begs[1]);
 				next=0;
@@ -10408,7 +10407,7 @@ divcont:
 			}
 			else{
 				if(tok!=tk_beg||(unsigned int)itok.number!=CL){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					ClearReg(CX);
 					warningreg(begs[1]);
 					next=0;
@@ -10505,7 +10504,7 @@ int i;
 int reg1,reg2;
 unsigned long long ii;
 int r1,r2;
-char *ofsstr=NULL;
+	std::string ofsstr;
 int rettype;
 int pointr=0;
 int numpointr=0;
@@ -10912,7 +10911,7 @@ defadd:
 			}
 			else if(reg!=CX){
 				if(!(itok2.type==tp_stopper&&(tok==tk_beg||tok==reg||tok==tk_reg32)&&itok.number==CL)){
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					dobegmath(CL);
 					warningreg(begs[1]);
 					ClearReg(CL);
@@ -11023,7 +11022,7 @@ shiftcl:
 			getintoreg64(reg);
 			doregmath64(reg);
 mul:
-			CallExternProc("__llmul");
+	callExternProc("__llmul");
 			addESP-=8;
 endmul:
 			ClearReg(EAX);
@@ -11172,7 +11171,7 @@ divcont:
 				op(0xC0+EDX+r2*8);	//mov EDX,r2
 			}
 sdiv:
-			CallExternProc("__lludiv");
+	callExternProc("__lludiv");
 			addESP-=8;
 			goto endmul;
 		default: operatorexpected(); break;
@@ -11331,7 +11330,7 @@ void doregmath64(int reg)
 int vop,i,optnum,negflag=FALSE;
 int r1,r2,next=1;
 int reg1,reg2;
-char *ofsstr=NULL;
+	std::string ofsstr;
 	r1=reg&255;
 	r2=reg/256;
 	Select2FreeReg(r1,r2,&reg1,&reg2);
@@ -11399,7 +11398,7 @@ char *ofsstr=NULL;
 					case tk_charvar:
 					case tk_beg:
 					case tk_bytevar:
-						getintoreg_32(reg2,r32,0,&ofsstr,FALSE);
+						getintoreg_32(reg2, r32, 0, ofsstr, FALSE);
 						op66(r32);
 						op(0x01+vop);
 						op(0xC0+r1+reg2*8);	/* OPT AX,CX */
@@ -11544,7 +11543,7 @@ defreg32:
 				else if((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&itok.number==CL)goto rshift;
 				else{
 rshift2:
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					next=0;
 					warningreg(begs[1]);
 rshift:
@@ -11585,7 +11584,7 @@ rshift:
 				else if((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&itok.number==CL)goto lshift;
 				else{
 llshift:
-					getintobeg(CL,&ofsstr);
+					getintobeg(CL, ofsstr);
 					next=0;
 					warningreg(begs[1]);
 lshift:
@@ -11673,7 +11672,7 @@ lshift:
 //				doregmath64(reg);
 				next=0;
 mul:
-				CallExternProc("__llmul");
+	callExternProc("__llmul");
 				addESP-=8;
 endmul:
 				if(r1!=EAX){
@@ -11815,7 +11814,7 @@ divcont:
 					op(0xC0+EDX+r2*8);	//mov EDX,r2
 				}
 sdiv:
-				CallExternProc(vop==0?"__lludiv":"__llumod");
+	callExternProc(vop == 0 ? "__lludiv" : "__llumod");
 				addESP-=8;
 				goto endmul;
 			default: operatorexpected(); break;
@@ -12141,29 +12140,29 @@ movreg64:
 	if(next)nexttok();
 }
 
-void CallExternProc(char *name)
+void callExternProc(const char *Name)
 {
 ITOK itok4;
 int tok4=tk_id;
 char string4[256];
 struct idrec *ptrs;
 	memset(&itok4,0,sizeof(ITOK));
-	strcpy(string4,name);
-	searchtree(&itok4,&tok4,(unsigned char *)string4);
+	strcpy(string4,Name);
+    searchTree(&itok4, &tok4, (unsigned char *) string4);
 	ptrs=itok4.rec;
 	switch(tok4){
 		case tk_id:
 			tok4=tok;
 			itok4=itok;
 			strcpy((char *)itok.name,string4);
-			string[0]=0;
+			String[0]=0;
 			itok.flag=tp_stdcall;
 			tok=tk_undefproc;
 			itok.number=secondcallnum;
 			itok.segm=NOT_DYNAMIC;
 			itok.rm=tk_qword;
 			itok.post=0;
-			addtotree(itok.name);
+			addToTree(itok.name);
 			addacall(secondcallnum++,CALL_NEAR);
 			tok=tok4;
 			itok=itok4;
@@ -12186,8 +12185,8 @@ struct idrec *ptrs;
 			}
 			break;
 		default:
-			sprintf(string4,"'%s' already used",name);
-			preerror(string4);
+			sprintf(string4,"'%s' already used",Name);
+			prError(string4);
 			break;
 	}
 }

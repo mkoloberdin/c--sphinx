@@ -1,6 +1,8 @@
 /* Этот файл сгенерирован программой 'FASTLIST.EXE' */
 
-short ofsres[26]={
+#include <cstdint>
+
+uint16_t ofsres[26]={
 	0x0000,0x003B,	//a b
 	0x004C,0x009B,	//c d
 	0x00BE,0x00D8,	//e f

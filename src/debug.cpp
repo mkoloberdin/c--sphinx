@@ -1,5 +1,13 @@
+#include <vector>
+#include <string>
+using namespace std::string_literals;
+#include <cstdint>
+
 #include "tok.h"
+
+#ifdef _WIN32
 #include <io.h>
+#endif
 
 #define _DEBUG_
 
@@ -7,18 +15,18 @@
 #define MAXNUMSYM 500
 #define MAXLSTSTR 128	//максимальный размер строки листинга
 
-void AddNameToTable(char *name);
+void addNameToTable(const std::string &Name);
 void AddSymbolList(struct idrec *ptr);
 int CreateDosDebug();
 int CreateW32Debug();
 void GeneratLst();
 
-unsigned int *dbgloc=NULL;	//адресс точки
-unsigned int *dbgnum;	//номер строки
-unsigned short *dbgmod;	//номер файла
-char **lststring;	//строки исходного текста
-unsigned char *lstflag=NULL;	//флаги управления листингом
-unsigned int *lstend;
+std::vector<unsigned int> DbgLoc;            //адресс точки
+std::vector<unsigned int> DbgLineNum;        //номер строки
+std::vector<unsigned short> DbgModuleNum;    //номер файла
+std::vector<std::string> Listing;            //строки исходного текста
+std::vector<unsigned char> LstFlags;		 //флаги управления листингом
+std::vector<unsigned int> LstEnd;
 
 unsigned int pdbg=0;      /* number of post entrys */
 unsigned int pdbgmax=MAXDBGS;      /* max number of post entrys */
@@ -131,18 +139,8 @@ static struct _COR_INFO_
 void InitDbg()
 {
 	if(fobj)dbg&=0xFE;
-	if(dbg&&(dbgloc==NULL)){
-		dbgloc=(unsigned int *)MALLOC(MAXDBGS*sizeof(unsigned int));
-		dbgnum=(unsigned int *)MALLOC(MAXDBGS*sizeof(unsigned int));
-		dbgmod=(unsigned short *)MALLOC(MAXDBGS*sizeof(unsigned short));
+	if (dbg && DbgLoc.empty()) {
 		dbgact=1;	//запретить сбор информации
-	}
-	if((dbg&2)&&lstflag==NULL){
-		lststring=(char **)MALLOC(MAXDBGS*sizeof(char *));
-		lstflag=(unsigned char *)MALLOC(MAXDBGS*sizeof(char));
-		lstend=(unsigned int *)MALLOC(MAXDBGS*sizeof(unsigned int));
-		memset((char *)lstflag,-1,MAXDBGS*sizeof(char));
-		memset((unsigned int *)lstend,0,MAXDBGS*sizeof(unsigned int));
 	}
 }
 
@@ -151,61 +149,54 @@ void AddDataLine(char ssize/*,char typev*/)
 /*	if(typev==pointer||typev==farpointer)ssize=(typev==pointer?(char)2:(char)4);
 	else*/ //if(tok==tk_string)ssize=(char)3;
 	lsttypedata=(unsigned char)(ssize<<1);
-	AddLine();
+	addLine();
 	lsttypedata=0;
 }
 
-void AddDataNullLine(char ssize,char *name)
+void addDataNullLine(char ssize, const std::string &Name)
 {
 	oline--;
 
 	lsttypedata=(unsigned char)(ssize<<1);
-	AddLine(TRUE);
+	addLine(TRUE);
 	lsttypedata=0;
-	dbgnum[pdbg-1]=0;	//очистить номер строки
+	DbgLineNum[pdbg-1]=0;	//очистить номер строки
 //new !!!
-	if(name!=NULL)lststring[pdbg-1]=BackString(name);
+	if (!Name.empty())
+		Listing[pdbg - 1] = Name;
 }
 
-void AddCodeNullLine(char *name)
+void addCodeNullLine(const std::string &Name)
 {
 	oline--;
-	AddLine(TRUE);
-	dbgnum[pdbg-1]=0;	//очистить номер строки
-	if(name!=NULL)lststring[pdbg-1]=BackString(name);
+	addLine(TRUE);
+	DbgLineNum[pdbg-1]=0;	//очистить номер строки
+	if (!Name.empty())
+		Listing[pdbg - 1] = Name;
 	oline--;
 }
 
-void AddEndLine()
+void addEndLine()
 {
-	if(pdbg/*&&lstend[pdbg-1]==0*/)lstend[pdbg-1]=outptr;
+	if (pdbg/*&&lstend[pdbg-1]==0*/)
+		LstEnd.emplace_back(outptr);
 }
 
-void AddLine(int SkipLineInfo)
+void addLine(int SkipLineInfo)
 {
-	if(/*ooutptr!=outptr&&*/dbgact==0&&(oline!=linenumber||omodule!=currentfileinfo)){
-		while(ooutptr>outptr&&pdbg!=0&&ooutptr!=0xffffffff)KillLastLine();
-		if(pdbg==pdbgmax){
-			pdbgmax+=MAXDBGS;
-			dbgloc=(unsigned int *)  REALLOC(dbgloc,pdbgmax*sizeof(unsigned int));
-			dbgnum=(unsigned int *)  REALLOC(dbgnum,pdbgmax*sizeof(unsigned int));
-			dbgmod=(unsigned short *)REALLOC(dbgmod,pdbgmax*sizeof(unsigned short));
-			if(lstflag){
-				lststring=(char **)REALLOC(lststring,pdbgmax*sizeof(char *));
-				lstflag=(unsigned char *)REALLOC(lstflag,pdbgmax*sizeof(char));
-				lstend=(unsigned int *)REALLOC(lstend,pdbgmax*sizeof(unsigned int));
-				memset((char *)lstflag+(pdbgmax-MAXDBGS),-1,MAXDBGS*sizeof(char));
-				memset((unsigned int *)lstend+(pdbgmax-MAXDBGS),0,MAXDBGS*sizeof(unsigned int));
-			}
-		}
-		dbgloc[pdbg]=ooutptr=outptr;
-		dbgnum[pdbg]=oline=linenumber;
-		dbgmod[pdbg]=(unsigned short)currentfileinfo;
-		omodule=currentfileinfo;
-		if(dbg&2){
-			if(SkipLineInfo)lststring[pdbg]=NULL;
-			else{
-				char *ofs=startline;
+	if(/*ooutptr!=outptr&&*/dbgact==0&&(oline!=linenumber||omodule!=CurrentFileInfoNum)){
+		while (ooutptr > outptr && pdbg != 0 && ooutptr != 0xffffffff)
+			KillLastLine();
+		ooutptr = outptr;
+		DbgLoc.emplace_back(ooutptr);
+		oline=linenumber;
+		DbgLineNum.emplace_back(oline);
+		DbgModuleNum.emplace_back((unsigned short)CurrentFileInfoNum);
+		omodule=CurrentFileInfoNum;
+		if (dbg & 2) {
+			if (SkipLineInfo)Listing.emplace_back(""s);
+			else {
+				const char *ofs = startline;
 				char c;
 				int sizestring=0;
 				char buf[MAXLSTSTR];
@@ -217,18 +208,17 @@ void AddLine(int SkipLineInfo)
 				}
 				buf[sizestring]=0;
 				strbtrim(buf);
-				if((sizestring=strlen(buf))==0)lststring[pdbg]=NULL;
-				else{
-					lststring[pdbg]=(char *)MALLOC(sizestring+1);
-					strcpy(lststring[pdbg],buf);
+				if ((sizestring = strlen(buf)) == 0)Listing.emplace_back(""s);
+				else {
+					Listing.emplace_back(buf);
 				}
 			}
-			lstflag[pdbg]=(unsigned char)(am32|lsttypedata);
-			AddEndLine();
+			LstFlags.emplace_back(am32 | lsttypedata);
+			addEndLine();
 //		printf("%s(%d) outptr=%d\n",(startfileinfo+currentfileinfo)->filename,linenumber,outptr);
 		}
 		pdbg++;
-		(startfileinfo+currentfileinfo)->numdline++;
+		FilesInfo[CurrentFileInfoNum].numdline++;
 	}
 }
 
@@ -241,19 +231,19 @@ void KillLastLine()
 	}
 	if(dbgact==0&&pdbg!=0){
 //		printf("pdbg=%d dbgmod=%d currentfileinfo=%d\n",pdbg,dbgmod[0],currentfileinfo);
-		if(pdbg==1&&dbgmod[0]!=(unsigned short)currentfileinfo)return;
+		if(pdbg==1&&DbgModuleNum[0]!=(unsigned short)CurrentFileInfoNum)return;
 		pdbg--;
 		if(pdbg==0){
 			oline=0;
 			omodule=ooutptr=0xFFFFFFFF;
 		}
 		else{
-			oline=dbgnum[pdbg];
-			omodule=dbgmod[pdbg];
-			ooutptr=dbgloc[pdbg];
+			oline=DbgLineNum[pdbg];
+			omodule=DbgModuleNum[pdbg];
+			ooutptr=DbgLoc[pdbg];
 		}
 //		printf("%s(%d) pdbg=%d oline=%d ooutptr=%d\n",(startfileinfo+currentfileinfo)->filename,linenumber,pdbg,oline,ooutptr);
-		(startfileinfo+dbgmod[pdbg])->numdline--;
+		FilesInfo[DbgModuleNum[pdbg]].numdline--;
 	}
 }
 
@@ -263,18 +253,19 @@ void DoTDS()
 int retcode;
 unsigned int i,j;
 //создать файл
-	if(lstflag)GeneratLst();
+	if(!LstFlags.empty())
+		GeneratLst();
 	if(dbg&1){
 //убрать из списка файлов не используемые
 		for(i=0;i<totalmodule;i++){
-			if((startfileinfo+i)->numdline==0){
+			if(FilesInfo[i].numdline==0){
 				totalmodule--;
 				if(totalmodule!=i){
-					memcpy(&(startfileinfo+i)->filename,
-						&(startfileinfo+totalmodule)->filename,sizeof(FILEINFO));
+					FilesInfo[i] = FilesInfo[totalmodule];
 //корректировка таблиц строк
 					for(j=0;j<pdbg;j++){
-						if(dbgmod[j]==(unsigned short)totalmodule)dbgmod[j]=(unsigned short)i;
+						if(DbgModuleNum[j]==(unsigned short)totalmodule)
+							DbgModuleNum[j]=(unsigned short)i;
 					}
 					i--;
 				}
@@ -282,25 +273,25 @@ unsigned int i,j;
 		}
 //создать таблицу корреляций
 		corinfo=(struct _COR_INFO_ *)MALLOC(sizeof(_COR_INFO_));
-		corinfo->ofs=dbgloc[0];
+		corinfo->ofs=DbgLoc[0];
 		corinfo->startline=0;
-		omodule=corinfo->file=dbgmod[0];
+		omodule=corinfo->file=DbgModuleNum[0];
 		numcorrel=0;
 		for(j=1;j<pdbg;j++){
-			if((unsigned short)omodule!=dbgmod[j]){
+			if((unsigned short)omodule!=DbgModuleNum[j]){
 				(corinfo+numcorrel)->count=(unsigned short)(j-(corinfo+numcorrel)->startline);
-				(corinfo+numcorrel)->end=dbgloc[j]-1;
+				(corinfo+numcorrel)->end=DbgLoc[j]-1;
 				numcorrel++;
 				corinfo=(struct _COR_INFO_ *)REALLOC(corinfo,sizeof(_COR_INFO_)*(numcorrel+1));
-				(corinfo+numcorrel)->ofs=dbgloc[j];
+				(corinfo+numcorrel)->ofs=DbgLoc[j];
 				(corinfo+numcorrel)->startline=j;
-				omodule=(corinfo+numcorrel)->file=dbgmod[j];
+				omodule=(corinfo+numcorrel)->file=DbgModuleNum[j];
 			}
 		}
 		(corinfo+numcorrel)->count=(unsigned short)(pdbg-(corinfo+numcorrel)->startline);
-		(corinfo+numcorrel)->end=dbgloc[j-1]+1;
+		(corinfo+numcorrel)->end=DbgLoc[j-1]+1;
 		numcorrel++;
-		hout=CreateOutPut("tds","wb");
+		hout= createOutPut("tds", "wb");
 		if(am32)retcode=CreateW32Debug();
 		else retcode=CreateDosDebug();
 		if(retcode==0&&fwrite(output,outptr,1,hout)!=1)retcode=-1;
@@ -310,14 +301,14 @@ unsigned int i,j;
 	}
 }
 
-void AddNameToTable(char *name)
+void addNameToTable(const std::string &Name)
 {
 int i=0;
 char c;
-	do{
-		c=name[i++];
+	do {
+		c=Name[i++];
 		op(c);
-	}while(c!=0);
+	} while (i < Name.size());
 }
 
 void AddSymbolList(struct idrec *ptr)
@@ -328,7 +319,7 @@ void AddSymbolList(struct idrec *ptr)
 			 (ptr->rectok==tk_interruptproc&&ptr->recsegm>=NOT_DYNAMIC)||
 			 (ptr->rectok>=tk_bits&&ptr->rectok<=tk_doublevar&&modelmem!=SMALL)||
 			 (ptr->rectok==tk_structvar&&modelmem!=SMALL)){
-			AddNameToTable(ptr->recid);
+			addNameToTable(ptr->recid);
 			(symbols+numsymbols)->idxname=numsymbols+1;
 			(symbols+numsymbols)->ofs=(unsigned short)(ptr->recpost==0?
 				(unsigned short)ptr->recnumber:
@@ -346,18 +337,17 @@ void AddSymbolList(struct idrec *ptr)
 	}
 }
 
-void AddNameToPul(char *name)
+void addNameToPul(const std::string &Name)
 {
 static int sizebuf=0;
-int i;
-	i=strlen(name);
+	size_t i=Name.size();
 	if((lastofspul+i+2)>=sizebuf){
 		sizebuf+=STRLEN;
 		if(sizebuf==STRLEN)bufname=(unsigned char *)MALLOC(sizebuf);
 		else bufname=(unsigned char *)REALLOC(bufname,sizebuf);
 	}
 	bufname[lastofspul++]=(unsigned char)i;
-	strcpy((char *)(bufname+lastofspul),name);
+	strcpy((char *) (bufname + lastofspul), Name.c_str());
 	lastofspul+=++i;
 }
 
@@ -368,7 +358,7 @@ void AddGlobalName(struct idrec *ptr)
 		if((ptr->rectok==tk_proc&&ptr->recsegm>=NOT_DYNAMIC)||
 			 (ptr->rectok>=tk_bits&&ptr->rectok<=tk_doublevar)||
 			 (ptr->rectok==tk_structvar)){
-			AddNameToPul(ptr->recid);
+			addNameToPul(ptr->recid);
 			numsymbols++;
 			if(ptr->rectok==tk_proc){
 				outword(0x1c);	//size
@@ -403,7 +393,8 @@ int	startcode=outptr;
 int sstGlobalSym;
 int sstsrc;
 unsigned int i,j,jj,ofs;
-	for(;numsymbols<(short)totalmodule;numsymbols++)AddNameToPul((startfileinfo+numsymbols)->filename);
+	for (; numsymbols < (short) totalmodule; numsymbols++)
+		addNameToPul(FilesInfo[numsymbols].Filename.string());
 	segcode=(wbss==FALSE?1:2);
 	outptr=0;
 	outdword(0x41304246); 	 // TDS - signature
@@ -452,9 +443,9 @@ unsigned int i,j,jj,ofs;
 		jj=(corinfo+i)->count;
 		outword(jj+1); 	 // Lines count
 		ofs=(corinfo+i)->startline;
-		for(j=0;j<jj;j++)outdword(dbgloc[j+ofs]);
+		for(j=0;j<jj;j++)outdword(DbgLoc[j+ofs]);
 		outdword((corinfo+i)->end);
-		for(j=0;j<jj;j++)outword(dbgnum[j+ofs]);
+		for(j=0;j<jj;j++)outword(DbgLineNum[j+ofs]);
 		outword(0);
 	}
 //таблица глобальных символов
@@ -562,8 +553,8 @@ unsigned short beg,end;
 	ct=(CT *)MALLOC(sizeof(CT)*numcorrel);
 	for(i=0;i<totalmodule;i++){
 //имена модулей
-		AddNameToTable((startfileinfo+i)->filename);
-		strcpy((char *)string3,(startfileinfo+i)->filename);
+		addNameToTable((FilesInfo[i]).Filename.string());
+		strcpy((char *) string3, (FilesInfo[i]).Filename.c_str());
 		char *str=strrchr((char *)string3,'.');
 		if(str!=0){
 			str[0]=0;
@@ -572,7 +563,7 @@ unsigned short beg,end;
 			else str++;
 		}
 		else str=(char *)string3;
-		AddNameToTable(str);
+		addNameToTable(str);
 //таблица модулей
 		(module+i)->name=i*2+2+numsymbols;
 		(module+i)->language=1;
@@ -581,7 +572,7 @@ unsigned short beg,end;
 		(module+i)->sourindex=(unsigned short)(i+1);
 //информация об исходных файлах
 		(sft+i)->idx=i*2+1+numsymbols;
-		(sft+i)->time=(startfileinfo+i)->time;
+		(sft+i)->time=(FilesInfo[i]).time;
 		count=0;	//число кореляций для данного модуля
 		for(ii=0;ii<numcorrel;ii++){//обход таблицы корреляции
 			if((corinfo+ii)->file==(unsigned short)i){	//корр для этого модуля
@@ -617,8 +608,8 @@ unsigned short beg,end;
 	lt=(LT *)MALLOC(sizeof(LT)*pdbg);
 	for(j=0;(unsigned int)j<pdbg;j++){
 //		printf("line %d loc %X\n",dbgnum[j],dbgloc[j]);
-		(lt+j)->line=(unsigned short)dbgnum[j];
-		(lt+j)->ofs=(unsigned short)dbgloc[j];
+		(lt+j)->line=(unsigned short)DbgLineNum[j];
+		(lt+j)->ofs=(unsigned short)DbgLoc[j];
 	}
 	if(fwrite(lt,sizeof(LT)*pdbg,1,hout)!=1)return -1;
 	free(lt);
@@ -639,15 +630,15 @@ unsigned short beg,end;
 
 void KillDataLine(int line)
 {
-	(startfileinfo+dbgmod[line])->numdline--;
+	FilesInfo[DbgModuleNum[line]].numdline--;
 	for(unsigned int j=line;(j+1)<pdbg;j++){
-		dbgloc[j]=dbgloc[j+1];
-		dbgnum[j]=dbgnum[j+1];
-		dbgmod[j]=dbgmod[j+1];
+		DbgLoc[j]=DbgLoc[j+1];
+		DbgLineNum[j]=DbgLineNum[j+1];
+		DbgModuleNum[j]=DbgModuleNum[j+1];
 	}
-	lstflag++;
-	lststring++;
-	lstend++;
+	LstFlags.erase(LstFlags.begin());
+	Listing.erase(Listing.begin());
+	LstEnd.erase(LstEnd.begin());
 	pdbg--;
 }
 
@@ -657,19 +648,19 @@ unsigned int j;
 unsigned long startip;
 unsigned int offs2,line;
 unsigned char flag;
-	hout=CreateOutPut("lst","wt");
-	if(lstend[pdbg-1]==0)lstend[pdbg-1]=endinptr;
+	hout= createOutPut("lst", "wt");
+	if(LstEnd[pdbg-1]==0)LstEnd[pdbg-1]=endinptr;
 	startip=(comfile!=file_w32&&comfile!=file_bin?0:ImageBase);
 	fprintf(hout,"SPHINX/SHEKER C-- One Pass Disassembler. Version %d.%02d%s %s\n",ver1,ver2,betta,__DATE__);
 	for(j=0;j<pdbg;j++){
 //printf("line %d loc %X\n",dbgnum[j],dbgloc[j]);
-		if((int)lstflag[j]!=-1){
-			flag=lstflag[j];
-			offs2=lstend[j];
-			outptr=dbgloc[j];
+		if((int)LstFlags[j]!=-1){
+			flag=LstFlags[j];
+			offs2=LstEnd[j];
+			outptr=DbgLoc[j];
 			instruction_offset=outptr+startip;
 			seg_size=(unsigned char)(16+16*(flag&1));
-			line=dbgnum[j];
+			line=DbgLineNum[j];
 			if(offs2!=outptr){
 /*
 				if(line!=0)printf("%s %u:",(startfileinfo+dbgmod[j])->filename,line);
@@ -677,11 +668,11 @@ unsigned char flag;
 				else if(line!=0)printf("\n");
 	*/
 				fprintf(hout,"\n");
-				if(line!=0)fprintf(hout,"%s %u:",(startfileinfo+dbgmod[j])->filename,line);
-				if(lststring[j]!=NULL)fprintf(hout," %s\n",lststring[j]);
+				if(line!=0)fprintf(hout,"%s %u:", FilesInfo[DbgModuleNum[j]].Filename.c_str(),line);
+				if (!Listing[j].empty())fprintf(hout, " %s\n", Listing[j]);
 				else if(line!=0)fprintf(hout,"\n");
   			while(outptr<offs2){
-					if(flag&0x1e)undata(instruction_offset,offs2-dbgloc[j],(flag>>1)&15);
+					if(flag&0x1e)undata(instruction_offset,offs2-DbgLoc[j],(flag>>1)&15);
 	  		  else unassemble(instruction_offset);
 				}
 			}

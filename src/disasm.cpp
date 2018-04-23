@@ -1,6 +1,7 @@
 #include "tok.h"
 #include "table.h"
 #include <stdarg.h>
+#include <cstdint>
 
 #define _DISASM_
 
@@ -56,7 +57,7 @@
 */
 
 /* watch out for aad && aam with odd operands */
-char *opmap1[256]={
+const char *opmap1[256]={
 /* 0 */
   "add %Eb,%Rb",      "add %Ev,%Rv",     "add %Rb,%Eb",    "add %Rv,%Ev",
   "add al,%Ib",       "add %eax,%Iv",    "push es",        "pop es",
@@ -145,7 +146,7 @@ char *opmap1[256]={
   "cld",              "std",             "%g3",            "%g4"
 };
 
-char *second[] = {
+const char *second[] = {
 /* 0 */
   "%g5",              "%g6",             "lar %Rv,%Ew",    "lsl %Rv,%Ew",
   0,                  "loadall",         "clts",           "loadall",
@@ -226,7 +227,7 @@ char *second[] = {
 	"paddb %RM,%EM",    "paddw %RM,%EM",   "paddd %RM,%EM",  0
 };
 
-char *second_f30f[]={
+const char *second_f30f[]={
 // 0
 	0,0,0,0,0,0,0,0,
 	0,0,0,0,0,0,0,0,
@@ -288,7 +289,7 @@ char *second_f30f[]={
 	0,0,0,0,0,0,0,0
 };
 
-char *second_f20f[]={
+const char *second_f20f[]={
 // 0
 	0,0,0,0,0,0,0,0,
 	0,0,0,0,0,0,0,0,
@@ -353,7 +354,7 @@ char *second_f20f[]={
 	0,0,0,0
 };
 
-char *second_660f[]={
+const char *second_660f[]={
 // 0
 	0,0,0,0,
 	0,0,0,0,
@@ -424,7 +425,7 @@ char *second_660f[]={
 	"paddb %RX,%EX",   "paddw %RX,%EX",  "paddd %RX,%EX", 0
 };
 
-char *groups[][8] = {   /* group 0 is group 3 for %Ev set */
+const char *groups[][8] = {   /* group 0 is group 3 for %Ev set */
 /* 0 */
   { "add",            "or",              "adc",            "sbb",
     "and",            "sub",             "xor",            "cmp"           },
@@ -462,51 +463,51 @@ char *groups[][8] = {   /* group 0 is group 3 for %Ev set */
 
 /* zero here means invalid.  If first entry starts with '*', use st(i) */
 /* no assumed %EFs here.  Indexed by RM(modrm())                       */
-char *f0[]     = { 0, 0, 0, 0, 0, 0, 0, 0};
-char *fop_9[]  = { "*fxch st,%GF",0,0,0,0,0,0,0 };
-char *fop_10[] = { "fnop", 0, 0, 0, 0, 0, 0, 0 };
-char *fop_12[] = { "fchs", "fabs", 0, 0, "ftst", "fxam", 0, 0 };
-char *fop_13[] = { "fld1", "fldl2t", "fldl2e", "fldpi",
+const char *f0[]     = { 0, 0, 0, 0, 0, 0, 0, 0};
+const char *fop_9[]  = { "*fxch st,%GF",0,0,0,0,0,0,0 };
+const char *fop_10[] = { "fnop", 0, 0, 0, 0, 0, 0, 0 };
+const char *fop_12[] = { "fchs", "fabs", 0, 0, "ftst", "fxam", 0, 0 };
+const char *fop_13[] = { "fld1", "fldl2t", "fldl2e", "fldpi",
                    "fldlg2", "fldln2", "fldz", 0 };
-char *fop_14[] = { "f2xm1", "fyl2x", "fptan", "fpatan",
+const char *fop_14[] = { "f2xm1", "fyl2x", "fptan", "fpatan",
                    "fxtract", "fprem1", "fdecstp", "fincstp" };
-char *fop_15[] = { "fprem", "fyl2xp1", "fsqrt", "fsincos",
+const char *fop_15[] = { "fprem", "fyl2xp1", "fsqrt", "fsincos",
                    "frndint", "fscale", "fsin", "fcos" };
-char *fop_21[] = { 0, "fucompp", 0, 0, 0, 0, 0, 0 };
-char *fop_28[] = { "fneni", "fndisi", "fnclex", "fninit", "fnsetpm", 0, 0, 0 };
-char *fop_32[] = { "*fadd %GF,st",0,0,0,0,0,0,0 };
-char *fop_33[] = { "*fmul %GF,st",0,0,0,0,0,0,0 };
-char *fop_36[] = { "*fsubr %GF,st",0,0,0,0,0,0,0 };
-char *fop_37[] = { "*fsub %GF,st",0,0,0,0,0,0,0 };
-char *fop_38[] = { "*fdivr %GF,st",0,0,0,0,0,0,0 };
-char *fop_39[] = { "*fdiv %GF,st",0,0,0,0,0,0,0 };
-char *fop_40[] = { "*ffree %GF",0,0,0,0,0,0,0 };
-char *fop_42[] = { "*fst %GF",0,0,0,0,0,0,0 };
-char *fop_43[] = { "*fstp %GF",0,0,0,0,0,0,0 };
-char *fop_44[] = { "*fucom %GF",0,0,0,0,0,0,0 };
-char *fop_45[] = { "*fucomp %GF",0,0,0,0,0,0,0 };
-char *fop_48[] = { "*faddp %GF,st",0,0,0,0,0,0,0 };
-char *fop_49[] = { "*fmulp %GF,st",0,0,0,0,0,0,0 };
-char *fop_51[] = { 0, "fcompp", 0, 0, 0, 0, 0, 0 };
-char *fop_52[] = { "*fsubrp %GF,st",0,0,0,0,0,0,0 };
-char *fop_53[] = { "*fsubp %GF,st",0,0,0,0,0,0,0 };
-char *fop_54[] = { "*fdivrp %GF,st",0,0,0,0,0,0,0 };
-char *fop_55[] = { "*fdivp %GF,st",0,0,0,0,0,0,0 };
-char *fop_60[] = { "fnstsw ax", 0, 0, 0, 0, 0, 0, 0 };
-char *fop_16[]={"*fcmovb st,%GF",0,0,0,0,0,0,0};
-char *fop_17[]={"*fcmove st,%GF",0,0,0,0,0,0,0};
-char *fop_18[]={"*fcmovbe st,%GF",0,0,0,0,0,0,0};
-char *fop_19[]={"*fcmovu st,%GF",0,0,0,0,0,0,0};
-char *fop_24[]={"*fcmovnb st,%GF",0,0,0,0,0,0,0};
-char *fop_25[]={"*fcmovne st,%GF",0,0,0,0,0,0,0};
-char *fop_26[]={"*fcmovnbe st,%GF",0,0,0,0,0,0,0};
-char *fop_27[]={"*fcmovnu st,%GF",0,0,0,0,0,0,0};
-char *fop_29[]={"*fucomi st,%GF",0,0,0,0,0,0,0};
-char *fop_30[]={"*fcomi st,%GF",0,0,0,0,0,0,0};
-char *fop_61[]={"*fucomip st,%GF",0,0,0,0,0,0,0};
-char *fop_62[]={"*fcomip st,%GF",0,0,0,0,0,0,0};
+const char *fop_21[] = { 0, "fucompp", 0, 0, 0, 0, 0, 0 };
+const char *fop_28[] = { "fneni", "fndisi", "fnclex", "fninit", "fnsetpm", 0, 0, 0 };
+const char *fop_32[] = { "*fadd %GF,st",0,0,0,0,0,0,0 };
+const char *fop_33[] = { "*fmul %GF,st",0,0,0,0,0,0,0 };
+const char *fop_36[] = { "*fsubr %GF,st",0,0,0,0,0,0,0 };
+const char *fop_37[] = { "*fsub %GF,st",0,0,0,0,0,0,0 };
+const char *fop_38[] = { "*fdivr %GF,st",0,0,0,0,0,0,0 };
+const char *fop_39[] = { "*fdiv %GF,st",0,0,0,0,0,0,0 };
+const char *fop_40[] = { "*ffree %GF",0,0,0,0,0,0,0 };
+const char *fop_42[] = { "*fst %GF",0,0,0,0,0,0,0 };
+const char *fop_43[] = { "*fstp %GF",0,0,0,0,0,0,0 };
+const char *fop_44[] = { "*fucom %GF",0,0,0,0,0,0,0 };
+const char *fop_45[] = { "*fucomp %GF",0,0,0,0,0,0,0 };
+const char *fop_48[] = { "*faddp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_49[] = { "*fmulp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_51[] = { 0, "fcompp", 0, 0, 0, 0, 0, 0 };
+const char *fop_52[] = { "*fsubrp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_53[] = { "*fsubp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_54[] = { "*fdivrp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_55[] = { "*fdivp %GF,st",0,0,0,0,0,0,0 };
+const char *fop_60[] = { "fnstsw ax", 0, 0, 0, 0, 0, 0, 0 };
+const char *fop_16[]={"*fcmovb st,%GF",0,0,0,0,0,0,0};
+const char *fop_17[]={"*fcmove st,%GF",0,0,0,0,0,0,0};
+const char *fop_18[]={"*fcmovbe st,%GF",0,0,0,0,0,0,0};
+const char *fop_19[]={"*fcmovu st,%GF",0,0,0,0,0,0,0};
+const char *fop_24[]={"*fcmovnb st,%GF",0,0,0,0,0,0,0};
+const char *fop_25[]={"*fcmovne st,%GF",0,0,0,0,0,0,0};
+const char *fop_26[]={"*fcmovnbe st,%GF",0,0,0,0,0,0,0};
+const char *fop_27[]={"*fcmovnu st,%GF",0,0,0,0,0,0,0};
+const char *fop_29[]={"*fucomi st,%GF",0,0,0,0,0,0,0};
+const char *fop_30[]={"*fcomi st,%GF",0,0,0,0,0,0,0};
+const char *fop_61[]={"*fucomip st,%GF",0,0,0,0,0,0,0};
+const char *fop_62[]={"*fcomip st,%GF",0,0,0,0,0,0,0};
 
-char **fspecial[] = { /* 0=use st(i), 1=undefined 0 in fop_* means undefined */
+const char **fspecial[] = { /* 0=use st(i), 1=undefined 0 in fop_* means undefined */
   0, 0, 0, 0, 0, 0, 0, 0,
   0, fop_9, fop_10, 0, fop_12, fop_13, fop_14, fop_15,
   fop_16, fop_17, fop_18, fop_19, f0, fop_21, f0, f0,
@@ -517,7 +518,7 @@ char **fspecial[] = { /* 0=use st(i), 1=undefined 0 in fop_* means undefined */
   f0, f0, f0, f0, fop_60, fop_61, fop_62, f0
 };
 
-char *floatops[] = { /* assumed " %EF" at end of each.  mod != 3 only */
+const char *floatops[] = { /* assumed " %EF" at end of each.  mod != 3 only */
 /*00*/ "fadd", "fmul", "fcom", "fcomp",
        "fsub", "fsubr", "fdiv", "fdivr",
 /*08*/ "fld", 0, "fst", "fstp",
@@ -615,7 +616,7 @@ int sib()
 }
 
 /*------------------------------------------------------------------------*/
-void uprintf(char *s, ...)
+void uprintf(const char *s, ...)
 {
 va_list argptr;
 	va_start(argptr,s);
@@ -1180,39 +1181,38 @@ defg:
 			 }
        break;
 	default:
-			 preerror("uncnown operand for dizassemler");
+		prError("uncnown operand for dizassemler");
 			 break;
    }
 }
 
-void ua_str(char *str)
+void ua_str(const char *Str)
 {
 char c;
-  if (str == NULL) {
+  if (Str == nullptr) {
     uprintf("<invalid>");
     return;
   }
-  if (strpbrk(str, "CDFGRST")) /* specifiers for registers=>no size 2b specified */
+  if (strpbrk(Str, "CDFGRST")) /* specifiers for registers=>no size 2b specified */
     must_do_size = 0;
-  while ((c = *str++) != 0) {
+  while ((c = *Str++) != 0) {
     if (c == '%') {
-      c = *str++;
-			if(*str=='y'){
+      c = *Str++;
+			if(*Str=='y'){
 				qwordop=1;
-				str++;
+				Str++;
 			}
-      percent(c,*str++);
-    }
-		else {
+      percent(c,*Str++);
+    } else {
       if (c == ' ') uputchar('\t');
-			else uputchar(c);
+      else uputchar(c);
     }
   }
 }
 
 void unassemble(unsigned long ofs)
 {
-char *str;
+const char *Str;
 int c;
   fprintf(hout,seg_size==16?"%04X ":"%08lX ",ofs);
   prefix = 0;
@@ -1223,7 +1223,7 @@ int c;
   done_space = 0;
   c = getbyte();
 	if(c==0x9B){
-		switch(*(short *)&output[outptr]){
+		switch(*(uint16_t *)&output[outptr]){
 			case 0xE0DB:
 			case 0xE1DB:
 			case 0xE2DB:
@@ -1309,13 +1309,13 @@ int c;
   wordop = c & 1;
 	qwordop=0;
   must_do_size = 1;
-  if ((str = opmap1[c])==NULL) {    /* invalid instruction? */
+  if ((Str = opmap1[c])==NULL) {    /* invalid instruction? */
     uputchar('d');                  /* then output byte defines */
     uputchar('b');
     uputchar('\t');
     uprintf("%02Xh",c);
   }
-	else ua_str(str);                      /* valid instruction */
+	else ua_str(Str);                      /* valid instruction */
 endp:
   fprintf(hout,"%*s", 25-col, " ");
   fprintf(hout,"%s\n", ubuf);

@@ -7,6 +7,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#include <string>
+using namespace std::string_literals;
+#include <vector>
+#include <boost/filesystem/path.hpp>
+
+#include "fs.h"
+
 //#define DEBUGMODE
 
 #define OPTVARCONST // Замена переменных сонстантами
@@ -52,13 +59,7 @@
 #include "const.h"
 #include "struct.h"
 
-#ifdef _UNIX_
-	#ifndef stricmp
-		#define stricmp strcasecmp
-	#endif
-#endif
-
-#ifdef _UNIX_
+#ifndef _WIN32
 	long getfilelen(int fd);
 	#ifndef O_BINARY
 		#define O_BINARY 0
@@ -67,19 +68,18 @@
 
 extern unsigned char FixUpTable;	//запретить создание таблици Fix UP for Windows
 extern unsigned char WinMonoBlock;
-extern unsigned int currentfileinfo;
+extern unsigned int CurrentFileInfoNum;
 
 #if !defined (_MAIN_)
 extern char fobj;	//признак генерации obj
-extern char *rawfilename;
+extern fs::path RawFileName;
 extern struct tm timeptr;
 extern char outext[];
 extern unsigned char compilerstr[];  /* compiler ID string */
 extern LISTCOM *listcom;
 extern unsigned char gwarning;
 extern EWAR wartype,errfile;
-extern int numfindpath;
-extern char *findpath[];
+extern std::vector<fs::path> IncludePaths;
 extern char bufpath[];
 extern unsigned int  startptr;
 extern unsigned char wconsole;//признак генерации консольного приложения windows
@@ -87,10 +87,10 @@ extern unsigned long ImageBase;
 extern int numexport;
 extern struct listexport *lexport;
 extern unsigned char optstr;	//оптимизация строковых констант
-extern unsigned char crif;	//check reply include file
+extern unsigned char opt_cri;	// check for repeated include
 extern unsigned char idasm;	//ассемблерные инструкции считать идентификаторами
 extern char modelmem;
-extern char *stubfile;
+extern std::string StubFile;
 extern char comsymbios;
 extern unsigned char sobj;
 extern short dllflag;
@@ -99,7 +99,7 @@ extern int sbufstr;	//начальный размер этого буфера
 extern unsigned char wbss;	//пост переменные в отдельную секцию
 extern int numrel;	//число элементов в таблице перемещений
 extern unsigned char usestub;
-extern char *winstub;
+extern std::string winstub;
 extern unsigned char dpmistub;
 extern unsigned char useordinal;
 extern int startupfile;
@@ -111,14 +111,14 @@ extern unsigned char clearpost;
 extern unsigned char uselea;
 extern unsigned char regoverstack;
 extern unsigned char shortimport;
-extern char *namestartupfile;
+extern fs::path StartupFilename;
 extern unsigned char useinline;
 extern unsigned char ocoff;
 extern unsigned char ESPloc;
 
 #endif
 
-extern unsigned char string[STRLEN],string2[STRLEN+20];
+extern unsigned char String[STRLEN], String2[STRLEN + 20];
 
 #if !defined (_TOKC_)
 extern unsigned int outptrsize;	//размер выходного буфера
@@ -165,7 +165,7 @@ extern unsigned int externnum;
 extern unsigned char FastCallApi;	//разрешить быстрый вызов API процедур
 extern unsigned char FixUp;	//Делать ли таблицу перемещений
 extern void *liststring;	//цепочка информационных блоков о строках
-extern struct FILEINFO *startfileinfo;
+extern std::vector<struct FILEINFO> FilesInfo;
 extern unsigned int totalmodule;
 extern int retproc;
 extern unsigned char splitdata;	//отделить данные от кода
@@ -193,14 +193,14 @@ extern int tok,tok2;
 
 #if !defined (_TOKR_)
 extern char useasm;
-extern short ofsmnem[];
+extern uint16_t ofsmnem[];
 extern unsigned char asmMnem[];
 extern char asmparam;
 #endif
 
 #if !defined (_TOKA_)
 extern unsigned char id[];
-extern short idofs[];
+extern uint16_t idofs[];
 extern char id2[ID2S][9];
 extern char regs[2][8][4];
 extern char begs[8][3];
@@ -321,17 +321,17 @@ extern unsigned char idxregs[5];
 --------------------------------------------------*/
 void *MALLOC(unsigned long size);
 void *REALLOC(void *block,unsigned long size);
-void IncludePath(char *buf);
+void addIncludePath(const boost::filesystem::path &Path);
 int SelectComand(char *pptr,int *count);
 void strbtrim(char *st);
 unsigned long  Align(unsigned long size,unsigned long val);
 int AlignCD(char segm,int val);	//выравнять данные или код
-void ErrOpenFile(char *str);
+void errOpenFile(const fs::path &Str);
 unsigned int EntryPoint();
 long CopyFile(FILE *in,FILE *out);
 unsigned long getnumber(unsigned char *buf);
 void addinitvar();
-FILE *CreateOutPut(char *ext,char *mode);
+FILE *createOutPut(const fs::path &Ext, const char *Mode);
 void SetLST(unsigned char neg);
 void AddUndefClassProc();
 int MakeCoff();
@@ -346,13 +346,13 @@ int FindOff(unsigned char *name,int base);
 void nextchar();	//опр в toke
 void nexttok();
 void whitespace(); //пропуск нзначащих символов
-int searchtree(ITOK *itk4,int *tk4,unsigned char *strin4);
+int searchTree(ITOK *itk4, int *tk4, unsigned char *strin4);
 void AddUndefOff(int segm,char *ostring);
 void InitStruct();	//инициализировать структуру
 unsigned long LocalStruct(int flag,int *localline);	//инициализировать локальную структуру
 struct structteg * FindTeg(int Global,char *name=itok.name);	//найти тег
 void dostruct();
-int FastSearch(unsigned char *list,short *ofs,int type,char *str);
+int fastSearch(unsigned char *list, uint16_t *ofs, int type, const uint8_t *str);
 void FindDirectiv();
 unsigned long long scannumber(int *rm);
 void FastTok(int mode,int *tok4=&tok,ITOK *itok4=&itok);
@@ -369,7 +369,7 @@ void donew();
 void RunNew(int size);
 int CallDestructor(structteg *searcht);
 int FindUseName(char *name);	//поиск ссылок на текущее имя
-void DateToStr(char *buf);
+std::string getDateString();
 int CalcRm16(int base,int idx);
 int CheckDef();
 void SetNewStr(char *name);
@@ -384,8 +384,8 @@ void BackMod();
  Функции определеные в tokb.h
 --------------------------------------------------*/
 void AddReloc(int segm=itok.segm);
-int doalmath(int sign,char **ofsstr);
-int do_e_axmath(int sign,int razr,char **ofsstr);
+int doalmath(int Sign, const std::string &ofsstr);
+int do_e_axmath(int sign, int razr, const std::string &ofsstr);
 void getintoal(int gtok,ITOK *gstok,char *&gbuf,SINFO *gstr); /* AH may also be changed */
 void getinto_e_ax(int sign,int gtok,ITOK *gstok,char *&gbuf,SINFO *gstr,int razr,int useAX=FALSE);
 int  doeaxfloatmath(int itreturn=tk_reg32,int reg=AX,int addop=0);
@@ -396,9 +396,9 @@ void doseg(int seg);
 int caselong(unsigned long val);
 int dobeg(int beg,int terminater=tk_semicolon);
 void dobegmath(int beg);	/* math done is on all begs except AL */
-void doregmath_32(int reg,int razr,int sign,char **ofsstr,int i=0);	/* math done is on all regs except AX */
-int getintobeg(int beg,char **ofsstr);
-int getintoreg_32(int reg,int razr,int sign,char **ofsstr,int useloop=TRUE); /* get into word reg (except AX) with enum */
+void doregmath_32(int reg, int razr, int sign, const std::string &ofsstr, int i = 0);	/* math done is on all regs except AX */
+int getintobeg(int beg, const std::string &ofsstr);
+int getintoreg_32(int reg, int razr, int sign, const std::string &ofsstr, int useloop = TRUE); /* get into word reg (except AX) with enum */
 void outaddress(ITOK *outtok);
 void FloatToNumer(int addop=0);
 int dofloatvar(int addop=0,int retrez=tk_floatvar,int terminater=tk_semicolon);
@@ -412,7 +412,7 @@ void PopSeg(int seg);
 void PushSeg(int seg);
 void MovRegNum(int razr,int relocf,unsigned long number,int reg);
 int CheckMinusNum();
-int getintoreg(int reg,int razr,int sign,char **ofsstr);
+int getintoreg(int reg, int razr, int sign, const std::string &ofsstr);
 void dobits();
 void bits2reg(int reg,int razr);
 void getoperand(int reg=BX);
@@ -434,17 +434,17 @@ void dofloatstack(int num);
 /*-----------------08.03.98 20:59-------------------
  Функции определеные в tokc.c
 --------------------------------------------------*/
-localrec * addlocalvar(char *str,int tok,unsigned int num,int addmain=FALSE);
+localrec * addlocalvar(const char *Str, int tok, unsigned int num, int addmain = FALSE);
 int addpoststring(int segm=CS,int len=itok.number, int term=itok.flag); 	 /* add a string to the post queue */
 void define_locallabel();
-unsigned int dofrom();
+size_t doFrom();
 unsigned int doextract();
 int doparams();			/* do stack procedure parameter pushing */
 int swapparam();
 long updatetree();
 void addacall(unsigned int idnum,unsigned char callkind);
-idrec * addtotree(char *keystring);
-void compilefile(char *filename,int firstflag);
+idrec * addToTree(const char *Keystring);
+void compileFile(const fs::path &Filename, int FirstFlag);
 void convert_returnvalue(int expectedreturn,int actualreturn);
 int doid (char uppercase,int expectedreturn);
 void insert_dynamic(int insert=FALSE);
@@ -464,15 +464,14 @@ int procdo(int expectedreturn);
 int updatecall(unsigned int which,unsigned int where,unsigned int top);
 void AddBackBuf(int,char);
 void CharToBackBuf(char c);
-void missingpar(char *name="");
+void missingpar(const char *Name = "");
 int CheckCodeSize();
 void CheckPosts();
 int doanyundefproc(int jumpsend=FALSE);
 int doanyproc(int jumpsend=FALSE);
 void killpost(unsigned int poz);
-char *BackString(char *str);
 DLLLIST *FindDLL();
-long initglobalvar(int type,long elements,long ssize,char typev);
+long initGlobalVar(int type, long elements, long ssize, TypeValue TypeV);
 int typesize(int vartype);
 void dopoststrings();
 char *dynamic_var();
@@ -503,7 +502,7 @@ void setproc(int defflag);
 void define_procedure();
 void doregparams();
 int CheckDeclareProc();
-int loadfile(char *filename,int firstflag);
+int loadFile(const boost::filesystem::path &Filename, int FirstFlag);
 void RestoreStack();
 void IsUses(idrec *rec);
 int SkipBlock();
@@ -517,7 +516,7 @@ void AddApiToPost(unsigned int num);
 /*-----------------08.03.98 20:06-------------------
  функции определены в toke.c
 --------------------------------------------------*/
-void jumperror(unsigned int line,char *type);
+void jumperror(unsigned int Line, const char *Type);
 void beep();			 /* beep for any internal errors */
 void codeexpected();
 void datatype_expected(int type=0);
@@ -527,7 +526,7 @@ long doconstfloatmath();
 void dwordvalexpected();
 void idalreadydefined();
 void illegalfloat();
-void internalerror (char *str);// serious internal compiler error message
+void internalError(const char *Str);// serious internal compiler error message
 void maxoutputerror();
 void maxwordpostserror();
 void nextseminext();
@@ -546,18 +545,18 @@ void varexpected(int type);
 void wordvalexpected();
 int includeit(int type);
 int includeproc();
-int CheckMacros();
+int checkMacros();
 void tobigpost();
 void expected (char ch);
 int expecting(int want);
 void outprocedure(unsigned char *array,unsigned int length);
-void preerror(char *str);//error on currentline with line number and file name
-void thisundefined(char *str,int next=TRUE);
-void addconsttotree(char *keystring,long long constvalue,int type=tk_dword);
+void prError(const std::string &Str);//error on currentline with line number and file name
+void thisUndefined(const char *Str, int next = TRUE);
+void addConstToTree(const char *keystring, long long constvalue, int type = tk_dword);
 void directive();
 void doenum();
 void doprestuff(); //do initial code things, like resize mem, jump to main...
-void searchvar(char *name,int err=1);
+void searchVar(const char *Name, int err = 1);
 void expectingoperand(int want);
 void InitDefineConst();
 unsigned long long doconstqwordmath();
@@ -610,14 +609,14 @@ int Push(ITOK *wtok=NULL);
 	--------------------------------------------------*/
 void warningstring();
 void warningexpand();
-void warningjmp(char *str2,int line=linenumber,int file=currentfileinfo);
-void warningreg(char *str2);
-void preerror3(char *str,unsigned int line,unsigned int file=currentfileinfo);// error message at a different than current line
-void unableopenfile(char *name);
+void warningJmp(const std::string &Str2, unsigned int Line = linenumber, unsigned int File = CurrentFileInfoNum);
+void warningreg(const char *str2);
+void prError3(const std::string &Str, unsigned int line, unsigned int file = CurrentFileInfoNum);// error message at a different than current line
+void unableToOpenFile(const fs::path &Filename);
 void tegnotfound();
 void errstruct();
 void  warningdefined(char *);
-void extraparam(char *name="");
+void extraparam(const char *Name = "");
 void warningretsign();
 void ErrWrite();
 void ErrReadStub();
@@ -631,9 +630,9 @@ void warningunreach();
 void unuseableinput();
 void redeclare(char *name);
 void undefclass(char *name);
-void badinfile(char *name);
-void errorreadingfile(char *name);
-void expectederror(char *str);
+void badInputFile(const fs::path &Filename);
+void errorReadingFile(const fs::path &Filename);
+void expectedError(const std::string &Str);
 void unknowntype();
 void unknownstruct (char *name,char *sname);
 void unknowntagstruct (char *name);
@@ -653,7 +652,7 @@ void fpustdestroed();
 void unknownobj(char *name);
 void FindEndLex();
 void fpu0expected();
-void unknownpragma(char *name);
+void unknownPragma(const char *Name);
 void warpragmapackpop();
 void SkipBlock2();
 void warreplasevar(char *name);
@@ -662,7 +661,7 @@ void warcompeqconst();
 void warpointerstruct();
 void warESP();
 void waralreadinitvar(char *name,unsigned int num);
-void warningprint(char *str,unsigned int line,unsigned int file);
+void warningPrint(const std::string &Str, unsigned int Line, unsigned int File);
 void notexternfun();
 
 void AddDataLine(char ssize/*,char typev*/);
@@ -677,13 +676,13 @@ void unassemble(unsigned long ofs);
 /*-----------------25.01.01 23:02-------------------
  debug.cpp
 	--------------------------------------------------*/
-void AddLine(int SkipLine=FALSE);
+void addLine(int SkipLine = FALSE);
 void DoTDS();
 void InitDbg();
 void KillLastLine();
-void AddDataNullLine(char ssize/* new!!! */,char *name=NULL);
-void AddCodeNullLine(char *name=NULL);
-void AddEndLine();
+void addDataNullLine(char ssize/* new!!! */, const std::string &Name = NULL);
+void addCodeNullLine(const std::string &Name = NULL);
+void addEndLine();
 #ifdef DEBUGMODE
 void printdebuginfo();
 #endif
@@ -692,7 +691,7 @@ void printdebuginfo();
 /*-----------------12.04.01 22:46-------------------
  outpe
 	--------------------------------------------------*/
-void CreatStub(char *name);
+void createStub(const std::string &Name);
 void CreatWinStub();
 void ChSize(long size);
 
@@ -736,13 +735,13 @@ void initregstat();
 void deinitregstat();
 void IDXToReg(char *name,int size,int reg);
 int CheckIDXReg(char *name,int size,int reg);
-void IDZToReg(char *name,int reg,int razr);
-int CheckIDZReg(char *name,int reg,int razr);
+void IDZToReg(const std::string Name, int reg, int razr);
+int checkIDZReg(const std::string &Name, int reg, int razr);
 void clearregstat(int regs=0);
 void ConstToReg(unsigned long num,int reg,int razr);
 void ClearReg(int reg);
 int RegSwapReg(int reg1,int reg2,int razr);
-char *GetLecsem(int stop1,int stop2=tk_eof,int type=-1);
+const std::string getLexem(int Stop1, int Stop2 = tk_eof, int Type = -1);
 REGISTERSTAT *BakRegStat();
 void CopyRegStat(REGISTERSTAT *bak);
 void KillVar(char *name);
@@ -784,8 +783,8 @@ extern LVIC *listvic;
 /*-----------------------
 libobj
  -------------------------*/
-void AddNameObj(char *name,int typefind,int type);
-void AddObj();
+void addNameObj(fs::path &Name, int Typefind, int Type);
+void addObj();
 
 #ifdef __NEWLEX__
 void inittokn();

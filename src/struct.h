@@ -1,3 +1,9 @@
+#ifndef CMM_SPHINX_STRUCT_H
+#define CMM_SPHINX_STRUCT_H
+
+#include <cstdint>
+#include <string>
+
 typedef struct _BIT_{
 	unsigned int siz:8;
 	unsigned int ofs:24;
@@ -117,7 +123,7 @@ typedef struct _ITOK_
 	int sib;
 	union{
 		long number;
-		long long lnumber;
+		uint64_t lnumber;
 		double dnumber;
 		float fnumber;
 	};
@@ -326,7 +332,9 @@ typedef struct _STRING_LIST_
 
 struct FILEINFO
 {
-	char *filename;
+	FILEINFO(const fs::path &_Filename, int _numdline, idrec *_stlist) : Filename(_Filename), numdline(_numdline),
+																			stlist(_stlist) {}
+	fs::path Filename;
 	int numdline;
 	idrec *stlist;
 	union{
@@ -337,7 +345,7 @@ struct FILEINFO
 
 struct EWAR{
 	FILE *file;
-	char *name;
+	fs::path Name;
 };
 
 typedef struct _ICOMP_
@@ -368,7 +376,7 @@ typedef struct _ISW_
 struct postinfo
 {
 	unsigned int loc;
-	unsigned int num;
+	uintptr_t num;
 	unsigned short type;
 	unsigned short line;
 	unsigned short file;
@@ -542,6 +550,8 @@ struct LILV
 
 struct WARNACT
 {
-	void (*fwarn)(char *str,unsigned int line,unsigned int file);
+	void (*fwarn)(const std::string &Str, unsigned int line, unsigned int file);
 	unsigned char usewarn;
 };
+
+#endif // CMM_SPHINX_STRUCT_H

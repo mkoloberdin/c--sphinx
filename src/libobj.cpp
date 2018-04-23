@@ -1,11 +1,14 @@
+#include <string>
+#include <vector>
 #include "tok.h"
 #include "coff.h"
 
-char *meserr="Plese, send this obj and sources files to me (sheker@mail.ru)";
-struct LISTINCLFILE{
-	char *name;
-	int typefind;
-	int type;
+const char *meserr="Plese, send this obj and sources files to me (sheker@mail.ru)";
+struct LISTINCLFILE {
+	LISTINCLFILE(fs::path _Name, int _Typefind, int _Type) : Name(_Name), Typefind(_Typefind), Type(_Type) {}
+	fs::path Name;
+	int Typefind;
+	int Type;
 };
 
 enum{
@@ -24,15 +27,15 @@ struct LISTNAMESYMBOL{
 	char name[IDLENGTH];
 }*listnamesymbol;
 
-char *curobjname;
+fs::path curobjname;
 
 int numobj=0,numname;
-LISTINCLFILE *listobj;
+std::vector<LISTINCLFILE> listobj;
 unsigned int adr_end;
 
 void LoadObj();
 void AddPost(unsigned long loc,int type,unsigned int num);
-int searchtree2(idrec *fptr,ITOK *itok4,int *tok4,unsigned char *string4);
+int searchTree2(idrec *fptr, ITOK *itok4, int *tok4, unsigned char *String4);
 
 int GetSegm(int seg)
 {
@@ -56,30 +59,25 @@ OBJECT_ENTRY *obj;
 	return seg;
 }
 
-void AddNameObj(char *name,int typefind,int type)
+void addNameObj(fs::path &Name, int Typefind, int Type)
 {
-int len;
-	len=strlen(name);
-	if(!numobj)listobj=(LISTINCLFILE *)MALLOC(sizeof(LISTINCLFILE));
-	else listobj=(LISTINCLFILE *)REALLOC(listobj,sizeof(LISTINCLFILE)*(numobj+1));
-	(listobj+numobj)->name=BackString(name);
-	(listobj+numobj)->typefind=typefind;
-	(listobj+numobj)->type=type;
+	listobj.emplace_back(LISTINCLFILE(Name, Typefind, Type));
 	numobj++;
 }
 
-void AddObj()
+void addObj()
 {
 int hold;
 	for(int i=0;i<numobj;i++){
-		curobjname=(listobj+i)->name;
+		curobjname= listobj[i].Name;
 //		puts(curobjname);
-		hold=loadfile(curobjname,(listobj+i)->typefind);
+		hold = loadFile(curobjname, listobj[i].Typefind);
 		if(hold==1||hold==-1){
-			unableopenfile(curobjname);
+			unableToOpenFile(curobjname);
 			continue;
 		}
-		if((listobj+i)->type==0)LoadObj();
+		if (listobj[i].Type == 0)
+			LoadObj();
 		free(input);
 	}
 }
@@ -211,18 +209,18 @@ checkadr:
 					if(ptr->rectok==tk_undefproc||ptr->rectok==tk_proc||ptr->rectok==tk_interruptproc)goto dproc;
 					outptrdata=(listnamesymbol+minname)->adr;
 					if(splitdata==FALSE)outptr=outptrdata;
-					AddDataNullLine(3,(listnamesymbol+minname)->name);
+                    addDataNullLine(3, (listnamesymbol + minname)->name);
 				}
 				else{
 dproc:
 					outptr=(listnamesymbol+minname)->adr;//12.08.04 00:05 +ooutptr;
-					AddCodeNullLine((listnamesymbol+minname)->name);
+					addCodeNullLine((listnamesymbol + minname)->name);
 				}
 			}
 			else if(oseg==s_data){
 				outptrdata=(listnamesymbol+minname)->adr;//12.08.04 01:19 +ooutptrdata;
 				if(splitdata==FALSE)outptr=outptrdata;
-				AddDataNullLine(3,(listnamesymbol+minname)->name);
+                addDataNullLine(3, (listnamesymbol + minname)->name);
 			}
 			(listnamesymbol+minname)->dbg=1;
 		}
@@ -249,34 +247,34 @@ idrec *rec;
 		if(tsym->SectionNumber>=0){
 			(listnamesymbol+j)->idx=i;
 			if(tsym->N.Name.Short==0){
-				strcpy((char *)string,(char *)(input+size+tsym->N.Name.Long));
+				strcpy((char *)String,(char *)(input+size+tsym->N.Name.Long));
 			}
 			else{
-				strncpy((char *)string,(char *)tsym->N.sname,8);
-				string[8]=0;
+				strncpy((char *)String,(char *)tsym->N.sname,8);
+				String[8]=0;
 			}
 			//преобразовать имя
-			ConvertName((char *)string);
+			ConvertName((char *)String);
 			seg=(listnamesymbol+j)->seg=GetSegm(tsym->SectionNumber);
 //			printf("find name \"%s\" seg=%d type=%d class=%d\n",(char *)string,seg,tsym->Type,tsym->StorageClass);
 			(listnamesymbol+j)->adr=tsym->Value+GetOffSec(tsym->SectionNumber);
 			(listnamesymbol+j)->dbg=0;
-			strcpy((listnamesymbol+j)->name,(char *)string);
+			strcpy((listnamesymbol+j)->name,(char *)String);
 			if(seg==s_data){
 				outptrdata=(listnamesymbol+j)->adr;//12.08.04 01:20 +ooutptrdata;
-				count=FindOff(string,DS);
+				count=FindOff(String,DS);
 			}
 			else if(seg==s_bss){
 				postsize=(listnamesymbol+j)->adr;//12.08.04 01:20 +opostsize;
-				count=FindOff(string,VARPOST);
+				count=FindOff(String,VARPOST);
 			}
 			else if(seg==s_code){
 				outptr=(listnamesymbol+j)->adr;//11.08.04 23:59 +ooutptr;
-				count=FindOff(string,CS);
+				count=FindOff(String,CS);
 //				printf("adr=%08X count=%d\n",outptr,count);
 			}
 			displaytokerrors=FALSE;
-			if(searchtree2(treestart,&itok,&tok,string)){
+			if(searchTree2(treestart, &itok, &tok, String)){
 				rec=(listnamesymbol+j)->rec=itok.rec;
 				rec->count+=count;
 				if(tok==tk_undefproc||tok==tk_declare){
@@ -291,16 +289,16 @@ idrec *rec;
 			}
 			else{
 				if(seg==s_extern/*&&tsym->Type==32*/){	//внешний объект любого типа
-					strcpy(itok.name,(char *)string);
+					strcpy(itok.name,(char *)String);
 //					printf("undef proc \"%s\"\n",itok.name);
-					string[0]=0;
+					String[0]=0;
 					itok.flag=(unsigned char)(tok==tk_ID?tp_fastcall:(comfile==file_w32?tp_stdcall:tp_pascal));
 					tok=tk_undefproc;
 					itok.number=secondcallnum;
 					itok.segm=NOT_DYNAMIC;
 					itok.rm=tk_void;
 					itok.post=0;
-					rec=(listnamesymbol+j)->rec=addtotree(itok.name);
+					rec=(listnamesymbol+j)->rec= addToTree(itok.name);
 					rec->count=count;
 					secondcallnum++;
 				}
@@ -312,10 +310,10 @@ idrec *rec;
 						itok.segm=NOT_DYNAMIC;
 						itok.rm=tk_void;
 						itok.post=0;
-						strcpy(itok.name,(char *)string);
-						string[0]=0;
+						strcpy(itok.name,(char *)String);
+						String[0]=0;
 						itok.flag=(unsigned char)(tok==tk_ID?tp_fastcall:(comfile==file_w32?tp_stdcall:tp_pascal));
-						rec=(listnamesymbol+j)->rec=addtotree(itok.name);
+						rec=(listnamesymbol+j)->rec= addToTree(itok.name);
 						rec->count=count;
 					}
 					else{
@@ -323,7 +321,7 @@ idrec *rec;
 //						printf("undef \"%s\"\n",string);
 						if(seg==s_extern){
 //							puts("323");
-							preerror(meserr);
+							prError(meserr);
 //			printf("Type=%d Class=%d seg=%d %s\n",tsym->Type,tsym->StorageClass,seg,string);
 //							printf("??? %s\n",string);
 						}
@@ -354,12 +352,12 @@ unsigned char *buf;
 IMAGE_RELOCATION *trel;
 	head=(COFF_HEADER *)input;
 	if(head->cpu!=0x14C){
-		sprintf((char *)string,"file %s is not supported format",curobjname);
-		preerror((char *)string);
+		sprintf((char *)String,"file %s is not supported format",curobjname);
+		prError((char *) String);
 		return;
 	}
 	if(comfile!=file_w32){
-		preerror("include obj file posible only for windows programs");
+		prError("include obj file posible only for windows programs");
 		return;
 	}
 	linenumber=0;
@@ -421,7 +419,7 @@ IMAGE_RELOCATION *trel;
 											if(dbg&2){
 												int ooutptr=outptr;
 												outptr=adr_end;
-												AddDataNullLine(4,lns->name);
+                                                addDataNullLine(4, lns->name);
 												outptr=ooutptr;
 											}
 											*(long *)&output[adr_end]=rec->recnumber;
@@ -449,7 +447,7 @@ IMAGE_RELOCATION *trel;
 							break;
 						default:
 //							puts("432");
-							preerror(meserr);
+							prError(meserr);
 							break;
 					}
 				}
@@ -490,7 +488,7 @@ IMAGE_RELOCATION *trel;
 									break;
 								default:
 //									puts("472");
-									preerror(meserr);
+									prError(meserr);
 /*									if(rec!=NULL){
 										adr=(trel+j)->VirtualAddress+outptr;
 										if(rec->rectok==tk_apiproc){
@@ -506,7 +504,7 @@ IMAGE_RELOCATION *trel;
 							break;
 						case IMAGE_REL_I386_REL32:
 //							puts("488");
-							preerror(meserr);
+							prError(meserr);
 /*							adr=(trel+j)->VirtualAddress+outptr;
 							if(rec!=NULL){
 								if(rec->rectok!=tk_proc){

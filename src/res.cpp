@@ -1,8 +1,9 @@
 #define _RES_
 
 #include <fcntl.h>	 /* O_ constant definitions */
+
+#ifdef _WIN32
 #include <io.h>
-#include "tok.h"
 #pragma option -w-pin
 #ifdef __CONSOLE__
 #include <windows.h>
@@ -10,7 +11,17 @@
 #include <wchar.h>
 //#include <mbctype.h>
 #endif
+#else
+#include <cwchar>
+using namespace std;
+#endif
+
+#include "tok.h"
 #include "res.h"
+
+#include <string>
+using namespace std::string_literals;
+#include <boost/algorithm/string.hpp>
 
 RES *listres;	//таблица ресурсов
 int numres=0;	//текущее число ресурсов
@@ -36,44 +47,46 @@ int numstrtbl=0;
 struct TUSE{
 	unsigned short id;
 	unsigned short count;
-	char *tname;	//имя типа
+	std::string TName;	//имя типа
 }*tuse=NULL;
 
 unsigned int numtyperes=0;	//число типов ресурсов
 
-void AddType(unsigned short type,char *tname=NULL)
+void addType(unsigned short Type, const string &TName = ""s)
 {
 	if(tuse==NULL){
 		tuse=(TUSE *)MALLOC(sizeof(TUSE));
-		tuse->id=type;
+		tuse->id=Type;
 		tuse->count=1;
-		if(type==0)tuse->tname=tname;
+		if (Type == 0)
+			tuse->TName = TName;
 		numtyperes=1;
 		return;
 	}
 	for(unsigned int i=0;i<numtyperes;i++){
-		if(type==(tuse+i)->id){
-			if(type==0&&stricmp(tname,(tuse+i)->tname)!=0)continue;
+		if(Type==(tuse+i)->id){
+			if (Type == 0 && boost::iequals(TName, (tuse + i)->TName))
+				continue;
 			(tuse+i)->count++;
 			return;
 		}
 	}
 	tuse=(TUSE *)REALLOC(tuse,sizeof(TUSE)*(numtyperes+1));
-	(tuse+numtyperes)->id=type;
+	(tuse+numtyperes)->id=Type;
 	(tuse+numtyperes)->count=1;
-	if(type==0)(tuse+numtyperes)->tname=tname;
+	if(Type==0)(tuse+numtyperes)->TName=TName;
 	numtyperes++;
 }
 
 static unsigned int idnum;
-static char idname[IDLENGTH];
-static char resname[IDLENGTH];
+static std::string IDName;
+std::string ResName;
 static int restok;
 
 void InitBufRes();	//инициализировать буфер для ресурса
 void CheckResBuf(unsigned int size);	//проверить и если надо увеличить буфер
-void AddWString(unsigned char *name); //добавить строку в ресурс
-void AddNumOrd(unsigned char *name);	//добавить ординал/строку
+void addWString(const char *Name); //добавить строку в ресурс
+void addNumOrd(unsigned char *Name);	//добавить ординал/строку
 void r_Accelerators();
 void r_Dialog();
 void r_Icon();
@@ -85,39 +98,39 @@ void r_Font();
 void r_Stringtable();
 void r_Rcdata();
 void GetFileName(char *name);
-unsigned char *LoadFileBin(char *name);
+unsigned char *loadFileBin(const fs::path &Filename);
 unsigned short GetFlag(_STRINGS_ *type,int num);
 void r_Language();
 void r_Version();
-void NewResourse();
+void newResource();
 
 
-void badformat(char *name)
+void badFormat(const char *name)
 {
 char buf[80];
 	sprintf(buf,"bad format in '%s'",name);
-	preerror(buf);
+	prError(buf);
 	while(tok!=tk_endline&&tok!=tk_eof)nexttok();
 }
 
 void expectedrescommand()
 {
-	preerror("expected resourse command");
+	prError("expected resourse command");
 	while(tok!=tk_endline&&tok!=tk_eof)nexttok();
 }
 
 void equalres()
 {
-	preerror("two resource with equal 'id'");
+	prError("two resource with equal 'id'");
 }
 
 void badico()
 {
-	preerror("not load binare image");
+	prError("not load binare image");
 	while(tok!=tk_endline&&tok!=tk_eof)nexttok();
 }
 
-extern int CheckResName(char *name);
+extern int checkResName(const char *Name);
 /*
 void SaveFile(char *name)
 {
@@ -139,8 +152,8 @@ void input_res()
 			while(tok==tk_semicolon||tok==tk_endline)nexttok();
 		}
 		if(scanlexmode!=RESLEX||tok==tk_eof)break;
-		idname[0]=0;
-		resname[0]=0;
+		IDName.clear();
+		ResName.clear();
 		idnum=0;
 		restok=-1;
 		switch(tok){
@@ -150,8 +163,7 @@ void input_res()
 				break;
 			case tk_id:
 			case tk_ID:
-				strcpy(idname,itok.name);
-				strupr(idname);
+				IDName = boost::algorithm::to_upper_copy(std::string(itok.name));
 				nexttok();
 				break;
 			case tk_rescommand:
@@ -167,9 +179,9 @@ void input_res()
 			else if(tok!=tk_rescommand){
 				if(strlen(itok.name)/*&&tok2==tk_string*/){
 					restok=0;
-					strcpy(resname,itok.name);
+					ResName = itok.name;
 					nexttok();
-					NewResourse();
+					newResource();
 					continue;
 				}
 				expectedrescommand();
@@ -218,7 +230,7 @@ void input_res()
 			case CRT_NEWRESOURCE:
 				restok=itok.number;
 				nexttok();
-				NewResourse();
+				newResource();
 				break;
 			default:
 				expectedrescommand();
@@ -288,7 +300,7 @@ NameOrdinal Temp;
 		Temp.ordinal[1]=(unsigned short)doconstdwordmath();
 	}
 	else if(tok==tk_string){
-		Temp.name=(unsigned char *)BackString((char *)string);
+        Temp.name = (unsigned char *) strdup((char *) String);
 		nexttok();
 	}
 	else numexpected(par);
@@ -304,40 +316,40 @@ int i;
 		if(tok==tk_endline)break;
 		expecting(tk_camma);
 	}
-	if(i!=4)preerror("expecting window rectangle (4 signed integers)");
+	if(i!=4)prError("expecting window rectangle (4 signed integers)");
 }
 
-void AddWString(unsigned char *name)
+void addWString(const char *Name)
 {
 unsigned int pos;
 //unsigned char c;
-	if(name==NULL){
+	if(Name==NULL){
 		CheckResBuf(2);
 		curposbuf+=2;
 	}
 	else{
-		pos=(strlen((char *)name)+1)*3;
+		pos=(strlen((char *)Name)+1)*3;
 		CheckResBuf(pos);
 #ifdef __CONSOLE__
-		pos=MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,(char *)name,-1,(wchar_t *)&resbuf[curposbuf],pos);
+		pos=MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,(char *)Name,-1,(wchar_t *)&resbuf[curposbuf],pos);
 #else
-		pos=mbsrtowcs((wchar_t *)&resbuf[curposbuf],(char const **)&name,pos,NULL)+1;
+		pos=mbsrtowcs((wchar_t *)&resbuf[curposbuf],(char const **)&Name,pos,NULL)+1;
 #endif
 		curposbuf+=pos*2;
 	}
 }
 
-void AddNumOrd(unsigned char *name)
+void addNumOrd(unsigned char *Name)
 {
 NameOrdinal Temp;
-	Temp.name=name;
+	Temp.name=Name;
 	if(Temp.ordinal[0]==0xFFFF){
 		CheckResBuf(4);
 		*(unsigned short *)&resbuf[curposbuf]=Temp.ordinal[0];
 		*(unsigned short *)&resbuf[curposbuf+2]=Temp.ordinal[1];
 		curposbuf+=4;
 	}
-	else AddWString(name);
+	else addWString((const char *)Name);
 }
 
 void InitBufRes()
@@ -369,7 +381,7 @@ NameOrdinal Temp;
 unsigned short GetFlag(_STRINGS_ *type,int num)
 {
 	for(int i=0;i<num;i++){
-		if(stricmp(itok.name,(type+i)->id)==0){
+		if(boost::iequals(itok.name,(type+i)->id)){
 			return (type+i)->val;
 		}
 	}
@@ -394,16 +406,16 @@ int num;
 int j;
 	if(strinfo==NULL)strinfo=(_STRINGS_ *)MALLOC(sizeof(_STRINGS_)*MAXSTRTABINFO);
 	while(tok!=tk_endline&&tok!=tk_eof)nexttok();
-	if(!OpenBlock())badformat("STRINGTABLE");	//добавить новую
+	if(!OpenBlock())badFormat("STRINGTABLE");	//добавить новую
 	do{
 		num=GetNumber(1);
 		for(j=0;j<numstrtbl;j++){
-			if(num==(strinfo+j)->val)preerror("String ID is already used");
+			if(num==(strinfo+j)->val)prError("String ID is already used");
 		}
 		(strinfo+numstrtbl)->val=(short)num;
 		if(tok==tk_camma)nexttok();
-		if(tok!=tk_string)badformat("STRINGTABLE");
-		(strinfo+numstrtbl)->id=BackString((char *)string);
+		if(tok!=tk_string)badFormat("STRINGTABLE");
+        (strinfo + numstrtbl)->id = strdup((char *) String);
 		nexttok();
 		numstrtbl++;
 		if(numstrtbl>=maxstrinf){
@@ -429,11 +441,11 @@ int usesec;
 						InitBufRes();
 						curposbuf=ii*2;
 					}
-					char *name=(strinfo+j)->id;
+					const char *name=(strinfo+j)->id;
 					*(unsigned short *)&resbuf[curposbuf]=(unsigned short)strlen(name);
 					curposbuf+=2;
-					AddWString((unsigned char *)name);
-					free(name);
+					addWString(name);
+					free((char *)name);
 					curposbuf-=4;
 					break;
 				}
@@ -443,7 +455,7 @@ int usesec;
 		if(usesec){
 			GetResBlock();
 			curtres->type=CRT_STRING;
-			AddType(CRT_STRING);
+			addType(CRT_STRING);
 			curtres->res=(unsigned char *)REALLOC(resbuf,curposbuf);
 			curtres->size=curposbuf;
 			curtres->id=idnum;
@@ -454,12 +466,12 @@ int usesec;
 
 void domenu(unsigned int exts)
 {
-unsigned char *name;
+	std::string Name;
 unsigned int lastpos;
 unsigned long help;
 	if(OpenBlock()){
 		do{
-			if(tok!=tk_rescommand)badformat("MENU");
+			if(tok!=tk_rescommand)badFormat("MENU");
 			lastpos=(exts==TRUE?curposbuf+12:curposbuf);
 			CheckResBuf(18);
 			restok=itok.number;
@@ -467,7 +479,7 @@ unsigned long help;
 			switch(restok){
 				case rc_menuitem:
 					if(tok==tk_string){
-						name=(unsigned char *)BackString((char *)string);
+						Name = std::string((char *) String);
 						nexttok();
 						if(tok==tk_camma){
 							nexttok();
@@ -499,14 +511,12 @@ unsigned long help;
 							}
 						}
 						curposbuf+=(exts==FALSE?4:14);
-						AddWString(name);
+						addWString(Name.c_str());
 						if(exts){
 							CheckResBuf(2);
 							curposbuf=Align(curposbuf,4);
 						}
-						free(name);
-					}
-					else if(stricmp(itok.name,"SEPARATOR")==0){
+					} else if (boost::iequals(itok.name, "SEPARATOR"s)) {
 						if(exts){
 							*(unsigned long *)&resbuf[curposbuf]=0x800;
 							curposbuf+=16;
@@ -514,12 +524,12 @@ unsigned long help;
 						else curposbuf+=6;
 						nexttok();
 					}
-					else badformat("MENU");
+					else badFormat("MENU");
 					break;
 				case rc_popup:
 					help=0;
-					if(tok!=tk_string)badformat("MENU");
-					name=(unsigned char *)BackString((char *)string);
+					if(tok!=tk_string)badFormat("MENU");
+					Name = std::string((char *) String);
 					*(unsigned short *)&resbuf[lastpos]=(exts==FALSE?0x10:1);
 					nexttok();
 					if(tok==tk_camma){
@@ -553,24 +563,23 @@ unsigned long help;
 						}
 					}
 					curposbuf+=(exts==FALSE?2:14);
-					AddWString(name);
+					addWString(Name.c_str());
 					if(exts){
 						CheckResBuf(6);
 						curposbuf=Align(curposbuf,4);
 						*(unsigned long *)&resbuf[curposbuf]=help;
 						curposbuf+=4;
 					}
-					if(name)free(name);
 					domenu(exts);
 					break;
 				default:
-					badformat("MENU");
+					badFormat("MENU");
 					break;
 			}
 		}while(!CloseBlock()&&tok!=tk_eof);
 		resbuf[lastpos]|=0x80;
 	}
-	else badformat("MENU");
+	else badFormat("MENU");
 }
 
 void r_Menu()
@@ -579,9 +588,11 @@ unsigned int exts=FALSE;
 	if(restok==rc_menuex)exts=TRUE;
 	GetResBlock();
 	curtres->type=CRT_MENU;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_MENU);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_MENU);
 	InitBufRes();
 	while(tok!=tk_endline)nexttok();
 	if(tok==tk_rescommand&&itok.number==rc_language){
@@ -606,17 +617,19 @@ void r_Rcdata()
 {
 	GetResBlock();
 	curtres->type=CRT_RCDATA;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_RCDATA);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_RCDATA);
 char name[256];
 	name[0]=0;
 	GetFileName(name);
-	if(name[0]!=0)resbuf=LoadFileBin(name);
-	else if(tok==tk_string)resbuf=LoadFileBin((char *)string);
+	if(name[0]!=0)resbuf= loadFileBin(name);
+	else if(tok==tk_string)resbuf= loadFileBin((char *) String);
 	else{
 		InitBufRes();
-		if(!OpenBlock())badformat("RCDATA");
+		if(!OpenBlock())badFormat("RCDATA");
 		do{
 			if(tok==tk_number||(tok==tk_minus&&tok2==tk_number)){
 				CheckResBuf(2);
@@ -625,7 +638,7 @@ char name[256];
 			}
 			else if(tok==tk_string){
 				CheckResBuf(itok.number);
-				for(int i=0;i<itok.number;i++)resbuf[curposbuf++]=string[i];
+				for(int i=0;i<itok.number;i++)resbuf[curposbuf++]=String[i];
 				nexttok();
 			}
 			else if(tok==tk_id||tok==tk_ID){
@@ -645,7 +658,7 @@ char name[256];
 				*(unsigned long *)&resbuf[curposbuf]=GetNumber(0);
 				curposbuf+=4;
 			}
-			else badformat("RCDATA");
+			else badFormat("RCDATA");
 			if(tok==tk_camma||tok==tk_semicolon)nexttok();
 		}while(!CloseBlock()&&tok!=tk_eof);
 	}
@@ -672,27 +685,26 @@ int startpos;
 		startpos=curposbuf;
 		CheckResBuf(6);
 		curposbuf+=6;
-		if(stricmp("BLOCK",itok.name)==0){
+		if (boost::iequals("BLOCK"s, itok.name)) {
 			nexttok();
 			if(tok!=tk_string)stringexpected();
 			CheckResBuf((itok.number+1)*2+2);
-			AddWString((unsigned char *)string);
+			addWString((const char *) String);
 			curposbuf=Align(curposbuf,4);
 			nexttok();
 			if(OpenBlock())GetBlockInfo();
-			else badformat("VERSIONINFO");
-		}
-		else if(stricmp("VALUE",itok.name)==0){
+			else badFormat("VERSIONINFO");
+		} else if (boost::iequals("VALUE"s, itok.name)) {
 			nexttok();
 			if(tok!=tk_string)stringexpected();
 			CheckResBuf((itok.number+1)*2+2);
-			AddWString((unsigned char *)string);
+			addWString((const char *) String);
 			curposbuf=Align(curposbuf,4);
 			nexttok();
 			if(tok2==tk_string){
 				expecting(tk_camma);
 				CheckResBuf((itok.number+1)*2+2);
-				AddWString((unsigned char *)string);
+				addWString((const char *) String);
 				*(unsigned short *)&resbuf[startpos+4]=1;
 				*(unsigned short *)&resbuf[startpos+2]=(unsigned short)itok.number;
 				nexttok();
@@ -708,7 +720,7 @@ int startpos;
 //				nexttok();
 			}
 		}
-		else badformat("VERSIONINFO");
+		else badFormat("VERSIONINFO");
 		*(unsigned short *)&resbuf[startpos]=(unsigned short)(curposbuf-startpos);
 		curposbuf=Align(curposbuf,4);
 	}while(CloseBlock()==FALSE);
@@ -720,13 +732,15 @@ void r_Version()
 	InitBufRes();
 	curtres->type=CRT_VERSION;
 	curtres->id=1;
-	AddType(CRT_VERSION);
+	addType(CRT_VERSION);
 	*(unsigned short *)&resbuf[2]=0x34;
 //	if(idname[0]==0)stringexpected();
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
 	curposbuf=6;
-	AddWString((unsigned char *)"VS_VERSION_INFO");
+	addWString("VS_VERSION_INFO");
 	curposbuf=Align(curposbuf,4);
 	*(unsigned long *)&resbuf[curposbuf]=0xfeef04bd;
 	*(unsigned long *)&resbuf[curposbuf+4]=0x00010000;
@@ -760,7 +774,7 @@ void r_Version()
 				*(unsigned long *)&resbuf[curposbuf+32]=(unsigned long)GetNumber(0);
 				break;
 			default:
-				badformat("VERSIONINFO");
+				badFormat("VERSIONINFO");
 				break;
 		}
 	}
@@ -773,8 +787,8 @@ void r_Version()
 
 void r_Dialog()
 {
-unsigned char *name=NULL;
-unsigned char *font=NULL;
+	std::string Name;
+	std::string Font;
 int sizefont=0,i;
 NameOrdinal Menu;
 NameOrdinal Class;
@@ -786,9 +800,11 @@ unsigned int exts=FALSE;
 	if(restok==rc_dialogex)exts=TRUE;
 	GetResBlock();
 	curtres->type=CRT_DIALOG;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_DIALOG);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_DIALOG);
 	InitBufRes();
 	if(exts){
 		*(unsigned long *)&resbuf[0]=0xFFFF0001;
@@ -805,7 +821,7 @@ unsigned int exts=FALSE;
 		nexttok();
 		if(tok2!=tk_camma){
 			nexttok();
-			if(tok2!=tk_camma)badformat("DIALOG");
+			if(tok2!=tk_camma)badFormat("DIALOG");
 		}
 	}
 	GetRectangle(&resbuf[curposbuf+10],1);
@@ -821,7 +837,7 @@ unsigned int exts=FALSE;
 			case rc_caption:
 				nexttok();
 				if(tok!=tk_string)stringexpected();
-				name=(unsigned char *)BackString((char *)string);
+				Name = std::string((char *) String);
 				nexttok();
 				break;
 			case rc_font:
@@ -829,7 +845,7 @@ unsigned int exts=FALSE;
 				sizefont=GetNumber(1);
 				expecting(tk_camma);
 				if(tok!=tk_string)stringexpected();
-				font=(unsigned char *)BackString((char *)string);
+				Font = std::string((char *) String);
 				nexttok();
 				break;
 			case rc_class:
@@ -856,19 +872,18 @@ unsigned int exts=FALSE;
 					nexttok();
 					GetOrdinal(&Menu.name,1);
 				}
-				else badformat("DIALOG");
+				else badFormat("DIALOG");
 				break;
 		}
 		while(tok==tk_endline)nexttok();
 	}
 //доформировываем диалог
 	curposbuf=exts==TRUE?26:18;
-	AddNumOrd(Menu.name);
+	addNumOrd(Menu.name);
 	FreeOrdinal(Menu.name);
-	AddNumOrd(Class.name);
+	addNumOrd(Class.name);
 	FreeOrdinal(Class.name);
-	AddWString(name);
-	if(name)free(name);
+	addWString(Name.c_str());
 	if(sizefont){
 		resbuf[exts==TRUE?12:0]|=0x40;
 		*(unsigned short *)&resbuf[curposbuf]=(unsigned short)sizefont;
@@ -877,8 +892,7 @@ unsigned int exts=FALSE;
 				*(unsigned int *)&resbuf[curposbuf]=0x01000000;
 				curposbuf+=4;
 		}
-		AddWString(font);
-		free(font);
+		addWString(Font.c_str());
 	}
 	while(!CloseBlock()&&tok!=tk_eof){
 //	do{
@@ -887,7 +901,8 @@ unsigned int exts=FALSE;
 		nexttok();
 		curposbuf=Align(curposbuf,4);
 		CheckResBuf(34);
-		name=Menu.name=NULL;
+		Name.clear();
+		Menu.name=NULL;
 		i=1;
 		if(exts)curposbuf+=8;
 		*(unsigned short *)&resbuf[curposbuf+(exts==TRUE?16:18)]=0XFFFF;
@@ -904,9 +919,10 @@ unsigned int exts=FALSE;
 				while(tok==tk_endline)nexttok();
 				if(tok==tk_number)*(unsigned short *)&resbuf[curposbuf+(exts==TRUE?18:20)]=(unsigned short)itok.number;
 				else{
-					if(tok==tk_string)strncpy(itok.name,(char *)string,IDLENGTH);
+					if(tok==tk_string)strncpy(itok.name,(char *)String,IDLENGTH);
 					i=GetFlag((_STRINGS_ *)&typeclass,6);
-					if(!i)name=(unsigned char *)BackString((char *)string);
+					if (!i)
+						Name = std::string((char *) String);
 					else *(unsigned short *)&resbuf[curposbuf+(exts==TRUE?18:20)]=(unsigned short)i;
 				}
 				nextexpecting2(tk_camma);
@@ -932,7 +948,7 @@ unsigned int exts=FALSE;
 			case rc_rtext:
 			case rc_state3:
 				if(tok!=tk_string)stringexpected();
-				Menu.name=(unsigned char *)BackString((char *)string);
+				Menu.name=(unsigned char *) strdup((char *) String);
 				nexttok();
 				if(tok==tk_camma)nexttok();
 				while(tok==tk_endline&&tok!=tk_eof)nexttok();
@@ -982,19 +998,18 @@ unsigned int exts=FALSE;
 				}
 				break;
 			default:
-				badformat("DIALOG");
+				badFormat("DIALOG");
 				break;
 		}
 		while(tok==tk_endline)nexttok();
 		*(unsigned short *)&resbuf[poscount]=(unsigned short)(*(unsigned short *)&resbuf[poscount]+1);
 		curposbuf+=(exts==TRUE?20:22);
-		if(name){
+		if(!Name.empty()){
 			curposbuf-=4;
-			AddWString(name);
-			free(name);
+			addWString(Name.c_str());
 		}
 		if(Menu.name){
-			AddNumOrd(Menu.name);
+			addNumOrd(Menu.name);
 			FreeOrdinal(Menu.name);
 		}
 		else curposbuf+=2;
@@ -1011,7 +1026,8 @@ void GetFileName(char *name)
 	while(tok!=tk_string&&tok!=tk_endline&&tok!=tk_eof){
 		int i;
 		for(i=0;i<7;i++){
-			if(stricmp(itok.name,typemem[i].id)==0)break;
+			if (boost::iequals(itok.name, typemem[i].id))
+				break;
 		}
 		if(i==7){
 			strcpy(name,itok.name);
@@ -1029,22 +1045,24 @@ void GetFileName(char *name)
 	}
 }
 
-unsigned char *LoadFileBin(char *name)
+unsigned char *loadFileBin(const fs::path &Filename)
 {
 int inico;
 unsigned char *bitobr;
-	if((inico=open(name,O_BINARY|O_RDONLY))==-1){
-		badinfile(name);
+	if((inico=open(Filename.c_str(),O_BINARY|O_RDONLY))==-1){
+		badInputFile(Filename);
 		return NULL;
 	}
-	if((curposbuf=filelength(inico))==0){
-		badinfile(name);
+	boost::system::error_code ec;
+	curposbuf = fs::file_size(Filename, ec);
+	if (curposbuf == 0 || ec) {
+		badInputFile(Filename);
 		close(inico);
 		return NULL;
 	}
 	bitobr=(unsigned char *)MALLOC(curposbuf);
 	if((unsigned int)read(inico,bitobr,curposbuf)!=curposbuf){
-		errorreadingfile(name);
+		errorReadingFile(Filename);
 		close(inico);
 		free(bitobr);
 		return NULL;
@@ -1062,7 +1080,7 @@ char name[80];
 	curposbuf=0;
 	name[0]=0;
 	GetFileName(name);
-	if(name[0]!=0)bitobr=LoadFileBin(name);
+	if(name[0]!=0)bitobr= loadFileBin(name);
 	else if(tok==tk_endline){	//нет имени файла
 		InitBufRes();
 		if(!OpenBlock()){
@@ -1082,7 +1100,7 @@ char name[80];
 					hold*=(unsigned char)16;
 					if(isdigit(cha))hold+=(unsigned char)(cha-'0');
 					else if(isxdigit(cha))hold+=(unsigned char)((cha&0x5f)-'7');
-					else expectederror("hexadecimal digit");
+					else expectedError("hexadecimal digit"s);
 					nextchar();
 				}
 				resbuf[curposbuf++]=hold;
@@ -1096,7 +1114,7 @@ char name[80];
 		}while(!CloseBlock()&&tok!=tk_eof);
 		bitobr=(unsigned char *)REALLOC(resbuf,curposbuf);
 	}
-	else if(tok==tk_string)bitobr=LoadFileBin((char *)string);
+	else if(tok==tk_string)bitobr= loadFileBin((char *) String);
 	return bitobr;
 }
 
@@ -1108,29 +1126,35 @@ unsigned char *bitobr;
 	size=curposbuf-14;
 	GetResBlock();	//битмар
 	curtres->type=CRT_BITMAP;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
 	curtres->size=size;
 	curtres->res=(unsigned char *)MALLOC(size);
-	AddType(CRT_BITMAP);
+	addType(CRT_BITMAP);
 	memcpy(curtres->res,bitobr+14,size);
 	free(bitobr);
 }
 
-void NewResourse()
+void newResource()
 {
 unsigned char *bitobr=NULL;
 char name[256];
 	GetResBlock();
-	if(resname[0]==0)curtres->type=restok;
-	else curtres->tname=BackString(resname);
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(restok,curtres->tname);
+	if (ResName.empty())
+		curtres->type = restok;
+	else
+		curtres->TName = ResName;
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(restok, curtres->TName);
 	name[0]=0;
 	GetFileName(name);
-	if(name[0]!=0)bitobr=LoadFileBin(name);
-	else if(tok==tk_string)bitobr=LoadFileBin((char *)string);
+	if(name[0]!=0)bitobr= loadFileBin(name);
+	else if(tok==tk_string)bitobr= loadFileBin((char *) String);
 	else stringexpected();
 	if(bitobr!=NULL){
 		curtres->res=bitobr;
@@ -1146,11 +1170,13 @@ unsigned char *fontobr;
 	if((unsigned short)curposbuf==*(unsigned short *)&fontobr[2]){
 		GetResBlock();	//фонт
 		curtres->type=CRT_FONT;
-		if(idname[0]==0)curtres->id=idnum;
-		else curtres->name=BackString(idname);
+		if (IDName.empty())
+			curtres->id = idnum;
+		else
+			curtres->Name = IDName;
 		curtres->size=curposbuf;
 		curtres->res=fontobr;
-		AddType(CRT_FONT);
+		addType(CRT_FONT);
 	}
 }
 
@@ -1162,9 +1188,11 @@ unsigned long size;
 	if((icoobr=LoadBitmap())==NULL)return;
 	GetResBlock();	//группа икон
 	curtres->type=CRT_GROUP_ICON;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_GROUP_ICON);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_GROUP_ICON);
 unsigned int countico=*(unsigned short *)&icoobr[4];	//число иконок
 int sizeicohead=sizeof(_ICOHEAD_)+(sizeof(_RESDIR_)*countico);
 	curtres->size=sizeicohead;
@@ -1184,7 +1212,7 @@ unsigned int ofs2=6;
 		curtres->id=iconcount;
 		curtres->size=size=*(unsigned long *)&icohead[ofs+8];
 		curtres->res=(unsigned char *)MALLOC(size);
-		AddType(CRT_ICON);
+		addType(CRT_ICON);
 		unsigned int ofs3=*(unsigned int *)&icoobr[ofs2+12];
 		for(j=0;(unsigned int)j<size;j++)curtres->res[j]=icoobr[j+ofs3];
 		ofs+=sizeof(_RESDIR_);
@@ -1201,9 +1229,11 @@ unsigned long size;
 	if((curobr=LoadBitmap())==NULL)return;
 	GetResBlock();	//группа курсоров
 	curtres->type=CRT_GROUP_CURSOR;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_GROUP_CURSOR);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_GROUP_CURSOR);
 unsigned int countcur=*(unsigned short *)&curobr[4];	//число курсоров в файле
 int sizecurhead=sizeof(_ICOHEAD_)+(sizeof(_CURDIR_)*countcur);
 	curtres->size=sizecurhead;
@@ -1224,7 +1254,7 @@ unsigned int ofs2=6;
 		curtres->id=cursorcount;
 		curtres->size=size=*(unsigned long *)&curhead[ofs+8]=*(unsigned long *)&curobr[ofs2+8]+4;
 		curtres->res=(unsigned char *)MALLOC(size);
-		AddType(CRT_CURSOR);
+		addType(CRT_CURSOR);
 		unsigned int ofs3=*(unsigned int *)&curobr[ofs2+12];
 		*(unsigned short *)&curtres->res[0]=*(unsigned short *)&curobr[ofs2+4];
 		*(unsigned short *)&curtres->res[2]=*(unsigned short *)&curobr[ofs2+6];
@@ -1240,19 +1270,21 @@ void r_Accelerators()
 {
 	GetResBlock();
 	curtres->type=CRT_ACCELERATOR;
-	if(idname[0]==0)curtres->id=idnum;
-	else curtres->name=BackString(idname);
-	AddType(CRT_ACCELERATOR);
+	if (IDName.empty())
+		curtres->id = idnum;
+	else
+		curtres->Name = IDName;
+	addType(CRT_ACCELERATOR);
 	InitBufRes();
 	if(OpenBlock()){
 		do{
 			CheckResBuf(8);
 			if(tok==tk_string){
 				unsigned char c;
-				c=string[0];
+				c=String[0];
 				if(c=='^'){
-					c=string[1];
-					if(c<0x40)preerror("Unsolved symbol for Contrl");//error
+					c=String[1];
+					if(c<0x40)prError("Unsolved symbol for Contrl");//error
 					c-=0x40;
 				}
 				*(unsigned short *)&resbuf[curposbuf+2]=(unsigned short)c;
@@ -1279,7 +1311,7 @@ void r_Accelerators()
 		}while(!CloseBlock()&&tok!=tk_eof);
 		resbuf[curposbuf-8]|=0x80;
 	}
-	else badformat("ACCELERATORS");
+	else badFormat("ACCELERATORS");
 	curtres->res=(unsigned char *)REALLOC(resbuf,curposbuf);
 	curtres->size=curposbuf;
 }
@@ -1294,22 +1326,23 @@ int sortpos=0;	//позиция в списке сортировки
 			if((tuse+i)->id>(tuse+j)->id){
 				buf.id=(tuse+i)->id;
 				buf.count=(tuse+i)->count;
-				buf.tname=(tuse+i)->tname;
+				buf.TName=(tuse+i)->TName;
 				(tuse+i)->id=(tuse+j)->id;
 				(tuse+i)->count=(tuse+j)->count;
-				(tuse+i)->tname=(tuse+j)->tname;
+				(tuse+i)->TName=(tuse+j)->TName;
 				(tuse+j)->count=buf.count;
 				(tuse+j)->id=buf.id;
-				(tuse+j)->tname=buf.tname;
+				(tuse+j)->TName=buf.TName;
 			}
 			if((tuse+i)->id==(tuse+j)->id){
-				if(stricmp((tuse+i)->tname,(tuse+j)->tname)>0){
+				if (boost::algorithm::to_lower_copy((tuse + i)->TName) >
+					boost::algorithm::to_lower_copy((tuse + j)->TName)) {
 					buf.count=(tuse+i)->count;
-					buf.tname=(tuse+i)->tname;
+					buf.TName=(tuse+i)->TName;
 					(tuse+i)->count=(tuse+j)->count;
-					(tuse+i)->tname=(tuse+j)->tname;
+					(tuse+i)->TName=(tuse+j)->TName;
 					(tuse+j)->count=buf.count;
-					(tuse+j)->tname=buf.tname;
+					(tuse+j)->TName=buf.TName;
 				}
 			}
 		}
@@ -1335,7 +1368,8 @@ int sortpos=0;	//позиция в списке сортировки
 						int n=sortpos-k;
 						do{
 							m--;
-							if((listres+j)->name==NULL&&(listres+sortidx[m+n])->name==NULL){
+							if ((listres + j)->Name.empty() &&
+								(listres + sortidx[m + n])->Name.empty()) {
 								if((listres+j)->id>=(listres+sortidx[m+n])->id){//новый больше
 									if((listres+j)->id==(listres+sortidx[m+n])->id){	//равны
 										numidres--;
@@ -1356,17 +1390,18 @@ int sortpos=0;	//позиция в списке сортировки
 									}
 								}
 								sortidx[n+m+1]=sortidx[n+m];	//сдвинуть
-							}
-							else if((listres+j)->name==NULL&&(listres+sortidx[m+n])->name!=NULL){
+							} else if (!((listres + j)->Name.empty()) &&
+									   !((listres + sortidx[m + n])->Name.empty())) {
 								sortidx[n+m+1]=(unsigned short)j;
 								break;
-							}
-							else if((listres+j)->name!=NULL&&(listres+sortidx[m+n])->name==NULL){
+							} else if (!((listres + j)->Name.empty())
+									   && (listres + sortidx[m + n])->Name.empty()) {
 								sortidx[n+m+1]=sortidx[n+m];
 							}
 							else{
 								int cmp;
-								if((cmp=strcmp((listres+j)->name,(listres+sortidx[m+n])->name))>=0){
+								if ((cmp = strcmp((listres + j)->Name.c_str(),
+												  (listres + sortidx[m + n])->Name.c_str())) >= 0) {
 									if(cmp==0){
 										numidres--;
 										numlangres++;
@@ -1433,19 +1468,14 @@ LISTRELOC *listr=NULL;
 		if((tuse+i)->id==0){
 			*(unsigned long *)&resbuf[curposbuf]=startdata|0x80000000;
 			curres=listres+sortidx[i];
-			int len=strlen(curres->tname);
+			int len = curres->TName.size();
 			CheckResBuf(startdata-curposbuf+len*2+4);
 			*(unsigned short *)&resbuf[startdata]=(unsigned short)len;
-			unsigned char c;
-			len=0;
 			startdata+=2;
-			for(;;){
-				c=curres->tname[len++];
-				if(c==0)break;
+			for (auto c : curres->TName) {
 				resbuf[startdata]=c;
 				startdata+=2;
 			}
-			free(curres->tname);
 		}
 		else *(unsigned long *)&resbuf[curposbuf]=(tuse+i)->id;
 		*(unsigned long *)&resbuf[curposbuf+4]=nextofs|0x80000000;
@@ -1465,26 +1495,23 @@ LISTRELOC *listr=NULL;
 		unsigned int type=curres->type;
 		while((unsigned int)curres->type==type){
 			int k=j;
-			if(curres->name){	//добавить имя
-				if(j<(numres-1)&&type==(unsigned int)(listres+sortidx[j+1])->type&&
-					(listres+sortidx[j+1])->name!=NULL)
-					while(strcmp(curres->name,(listres+sortidx[j+1])->name)==0)j++;
+			if (!curres->Name.empty()) {    //добавить имя
+				if (j < (numres - 1) && type == (unsigned int) (listres + sortidx[j + 1])->type &&
+					(!(listres + sortidx[j + 1])->Name.empty()))
+					while (curres->Name == (listres + sortidx[j + 1])->Name)
+						j++;
 				*(unsigned short *)&resbuf[ofsback]=(unsigned short)(*(unsigned short *)&resbuf[ofsback]+1);
 				*(unsigned long *)&resbuf[curposbuf]=startdata|0x80000000;
-				int len=strlen(curres->name);
+				int len = curres->Name.size();
 				CheckResBuf(startdata-curposbuf+len*2+4);
 				*(unsigned short *)&resbuf[startdata]=(unsigned short)len;
-				unsigned char c;
 				len=0;
 				startdata+=2;
-				for(;;){
-					c=curres->name[len++];
-					if(c==0)break;
+				for(auto c : curres->Name){
 					resbuf[startdata]=c;
 					startdata+=2;
 				}
 //				startdata=Align(startdata,4);
-				free(curres->name);
 			}
 			else{	//добавить id
 				if(j<(numres-1)&&type==(unsigned int)(listres+sortidx[j+1])->type)

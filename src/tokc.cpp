@@ -1,15 +1,20 @@
 #define _TOKC_
 
+#include <string>
+using namespace std::string_literals;
+#include <boost/algorithm/string.hpp>
+
 #include <fcntl.h>	 /* O_ constant definitions */
 #include "tok.h"
 
-#ifdef _UNIX_
+#ifndef _WIN32
 #include <unistd.h>
+#include <sys/stat.h>
 #else
 #include <io.h>
 #endif
 
-#if !defined(__WIN32__)
+#if !defined(_WIN32)
 void GetFileTime(int fd,struct ftime *buf);
 #else
 #include <time.h>
@@ -27,7 +32,7 @@ char mesWHILE[]="WHILE";
 char mesFOR[]="FOR";
 char mesRETURN[]="RETURN";
 int tok,tok2; /* token holders current, next */
-unsigned char string[STRLEN],string2[STRLEN+20],
+unsigned char String[STRLEN],String2[STRLEN+20],
   string3[STRLEN];	//содержит не преобразованную строку
 unsigned int posts=0; 		 /* number of post entrys */
 postinfo *postbuf;
@@ -70,7 +75,7 @@ unsigned int linenumber=0;
 unsigned char dynamic_flag=0;	//флаг обработки динамических элементов
 
 unsigned char *input; 	 /* dynamic input buffer */
-unsigned int endinptr;		 /* end index of input array */
+size_t endinptr;		 /* end index of input array */
 unsigned int inptr; 		 /* index in input buffer */
 unsigned char cha;		 /* pipe byte for token production */
 char endoffile; 		 /* end of input file flag */
@@ -111,9 +116,9 @@ unsigned char AlignProc=FALSE;
 char param[256];	//буфер для параметров процедуры
 char *BackTextBlock;	//буфер для перенесенного текста
 int SizeBackBuf=0,MaxSizeBackBuf;
-struct FILEINFO *startfileinfo=NULL;
+std::vector<struct FILEINFO> FilesInfo;
 unsigned int totalmodule=0;
-unsigned int currentfileinfo;
+unsigned int CurrentFileInfoNum;
 unsigned char setzeroflag;	//операция меняет zero flag
 unsigned char notunreach=FALSE;
 unsigned int initBP=0;
@@ -136,10 +141,10 @@ void globalvar(); 	/* both initialized and unitialized combined */
 void doswitch();
 void CalcRegPar(int reg,int def,char *&ofsstr);
 void JXorJMP();
-int loadinputfile(char *inpfile);
+int loadInputFile(const fs::path &InputFile);
 int SaveStartUp(int size,char *var_name);
-void LoadData(unsigned int size,int filehandle);
-void SetNewTok(int type,int typev);
+void loadData(size_t size, int filehandle);
+void setNewTok(int type, TypeValue TypeV);
 void doreturn(int type=tokens);		/* do return(...); */
 void notnegit(int notneg);
 void insertcode();		 // force code procedure at specified location
@@ -181,30 +186,33 @@ extern int numberbreak;
 SAVEREG savereg;
 SAVEREG *psavereg=&savereg;
 
-int loadfile(char *filename,int firstflag)
+int loadFile(const fs::path &Filename, int FirstFlag)
 {
 int hold;
-	for(int i=0;i<=numfindpath;i++){
-		sprintf((char *)string2,"%s%s",findpath[(firstflag==0?i:numfindpath-i)],filename);
-		if((hold=loadinputfile((char *)string2))!=-2)break;
-		if(firstflag==2||(firstflag==0&&(i+1)==numfindpath))break;
+	size_t NumIncludePaths = IncludePaths.size();
+	for (int i = 0; i < NumIncludePaths; i++) {
+        fs::path P = IncludePaths[(FirstFlag == 0 ? i : (NumIncludePaths - 1) - i)] / Filename;
+		if ((hold = loadInputFile(P)) != -2)
+			break;
+		if (FirstFlag == 2 || (FirstFlag == 0 && (i + 1) == NumIncludePaths))break;
 	}
 	if(hold==-2){
-		unableopenfile(filename); //сообщение о ошибке
+		unableToOpenFile(Filename); //сообщение о ошибке
 		exit(e_cannotopeninput);	//завершить работу если не смогли загрузить файл
 	}
 	return hold;
 }
 
-void compilefile(char *filename,int firstflag)
+void compileFile(const fs::path &Filename, int FirstFlag)
 {
 int hold;
-	hold=loadfile(filename,firstflag);
+	hold= loadFile(Filename, FirstFlag);
 	if(hold==1||hold==-1)return;
-	if(strcmp(filename,"startup.h--")==0)startupfile=currentfileinfo;
+	if (Filename.string() == "startup.h--"s)
+		startupfile = CurrentFileInfoNum;
 	inptr=0;
 	endoffile=0;
-	startline=input;
+    startline = (char *)input;
 	endinput=startline+endinptr;
 	warning=gwarning;
 	nextchar();
@@ -212,13 +220,10 @@ int hold;
 	inptr2=inptr;	//запомн указатель на след символ
 	linenum2=1;   //номер строки
 	{	//проверка на файл ресурсов и его обработка
-		char *a;
-		if((a=strrchr(filename,'.'))!=NULL){
-			if(stricmp(a,".rc")==0){
-				input_res();
-				free(input);
-				return;
-			}
+		if (Filename.extension() == fs::path{".rc"}) {
+			input_res();
+			free(input);
+			return;
 		}
 	}
 	nexttok();    //опр тип первого и второго токена
@@ -272,7 +277,7 @@ int hold;
 				break;// опр динамической  процедуры
 			case tk_inline:
 				if(testInitVar()){
-					preerror("Bad header dynamic function");
+					prError("Bad header dynamic function");
 					nexttok();
 				}
 				dynamic_proc();
@@ -282,7 +287,8 @@ int hold;
 				nexttok();
 				break;
 			case tk_enum: doenum(); break;
-			case tk_from: nexttok(); dofrom(); nextseminext(); break;
+			case tk_from: nexttok();
+				doFrom(); nextseminext(); break;
 			case tk_extract: nexttok(); doextract(); seminext(); break;
 			case tk_loop:
 			case tk_while:
@@ -310,10 +316,11 @@ int hold;
 			case tk_seg:
 			case tk_beg:
 			case tk_reg64:
-				preerror("register name cannot be used as an identifier");
+				prError("register name cannot be used as an identifier");
 				nexttok();
 			case tk_eof: break;
-			case tk_locallabel: internalerror("local label token found outside function block."); break;
+			case tk_locallabel:
+				internalError("local label token found outside function block."); break;
 			case tk_extern: declareextern(); break;
 			case tk_union: dynamic_flag=0; dounion(TRUE,fstatic==0?0:f_static); break;
 			case tk_semicolon: nexttok(); break;
@@ -330,7 +337,7 @@ int hold;
 		if(fstatic)fstatic--;
 		else if(dynamic_flag)dynamic_flag--;
 	}
-	(startfileinfo+currentfileinfo)->stlist=staticlist;
+	FilesInfo[CurrentFileInfoNum].stlist = staticlist;
 	free(input);
 }
 
@@ -468,7 +475,7 @@ void  doasmblock()
 			break;
 		}
 		lastcommand=tok;
-		if(dbg)AddLine();
+		if(dbg)addLine();
 		doasm(TRUE);
 	}
 	useasm=FALSE;
@@ -525,7 +532,7 @@ void docommand()		 /* do a single command */
 {
 unsigned int useflag;
 	useflag=0;
-	if(dbg)AddLine();
+	if(dbg)addLine();
 //loops:
 	lastcommand=tok;
 //	printf("tok=%d %s\n",tok,itok.name);
@@ -534,7 +541,7 @@ unsigned int useflag;
 		case tk_id:
 			if((useflag=doid((char)useflag,tk_void))!=tokens){
 				nextseminext();
-				if(useflag==tk_fpust)preerror("function returned parametr in FPU stack");
+				if(useflag==tk_fpust)prError("function returned parametr in FPU stack");
 			}
 			else if(tok!=tk_closebrace)docommand();
 			break;
@@ -634,7 +641,8 @@ unsigned int useflag;
 			nexttok();
 			endblock();
 			break;
-		case tk_from: nexttok(); dofrom(); nextseminext();	break;
+		case tk_from: nexttok();
+			doFrom(); nextseminext();	break;
 		case tk_extract: nexttok(); doextract(); seminext(); break;
 		case tk_minus: useflag=8;
 		case tk_not:
@@ -645,11 +653,11 @@ unsigned int useflag;
 		case tk_camma:
 		case tk_semicolon: nexttok();	break;
 		case tk_else:
-			preerror("else without preceeding if or IF");
+			prError("else without preceeding if or IF");
 			nexttok();
 			break;
 		case tk_ELSE:
-			preerror("ELSE without preceeding IF or if");
+			prError("ELSE without preceeding IF or if");
 			nexttok();
 			break;
 		case tk_eof: unexpectedeof(); break;
@@ -660,7 +668,7 @@ unsigned int useflag;
 		case tk_byte:
 		case tk_int:
 		case tk_char:
-			preerror("cannot declare variables within function { } block");
+			prError("cannot declare variables within function { } block");
 			nexttok();
 			break;
 		case tk_GOTO:
@@ -722,14 +730,14 @@ unsigned int useflag;
 
 void doBREAK(unsigned char typeb)
 {
-	if(curbr==0)preerror("'BREAK' or 'break' use only in loop, do-while..");
+	if(curbr==0)prError("'BREAK' or 'break' use only in loop, do-while..");
 	else MakeBreak(typeb);
 	nextseminext();
 }
 
 void doCONTINUE(unsigned char typeb)
 {
-	if(curco==0)preerror("'CONTINUE' or 'continue' use only in loop, do-while..");
+	if(curco==0)prError("'CONTINUE' or 'continue' use only in loop, do-while..");
 	else MakeContinue(typeb);
 	nextseminext();
 }
@@ -740,13 +748,13 @@ unsigned int nbr=0;
 	if(tok2==tk_number){
 		nexttok();
 		nbr=itok.number;
-		if(nbr>=curbr)preerror("'BREAK' or 'break' on incorrect number skip cycle");
+		if(nbr>=curbr)prError("'BREAK' or 'break' on incorrect number skip cycle");
 	}
 	numberbreak=nbr;
 	nbr=curbr-1-nbr;
 	if(usebr[nbr]==0){
 		GetNameLabel(tk_break,nbr);
-		addlocalvar((char *)string2,tk_locallabel,secondcallnum,TRUE);
+		addlocalvar((char *)String2,tk_locallabel,secondcallnum,TRUE);
 		usebr[nbr]=secondcallnum;
 		secondcallnum++;
 	}
@@ -761,13 +769,13 @@ unsigned int nbr=0;
 	if(tok2==tk_number){
 		nexttok();
 		nbr=itok.number;
-		if(nbr>=curco)preerror("'CONTINUE' or 'continue' on incorrect number skip cycle");
+		if(nbr>=curco)prError("'CONTINUE' or 'continue' on incorrect number skip cycle");
 	}
 	nbr=curco-1-nbr;
 	if(useco[nbr]==0){
 		GetNameLabel(tk_continue,nbr);
 //		printf("%s nbr=%d\n",(char *)string2,nbr);
-		addlocalvar((char *)string2,tk_locallabel,secondcallnum,TRUE);
+		addlocalvar((char *)String2,tk_locallabel,secondcallnum,TRUE);
 		useco[nbr]=secondcallnum;
 		secondcallnum++;
 	}
@@ -803,7 +811,7 @@ localrec *ptr;
 			updatecall((unsigned int)itok.number,outptr,procedure_start);//обработать ранние обращения
 			break;
 		default:
-			preerror("error declaretion local label");
+			prError("error declaretion local label");
 			break;
 	}
 	nexttok();
@@ -842,7 +850,7 @@ char fname[IDLENGTH];
 		else{	//глобальная метка
 			tok=tk_proc;
 			itok.number=outptr;
-			string[0]=0;
+			String[0]=0;
 			updatecall((unsigned int)updatetree(),(unsigned int)itok.number,0);
 		}
 		nexttok();	// move past id
@@ -896,7 +904,7 @@ char fname[IDLENGTH];
 		retproc=exitproc;
 		return(returnvalue);
 	}
-	thisundefined(itok.name);
+	thisUndefined(itok.name);
 	nexttok();
 	return(tk_long);
 }
@@ -925,7 +933,7 @@ unsigned int initparamproc()
 {
 unsigned int typep=itok.flag,snum=0;
 ITOK ostructadr=structadr;
-	strcpy(param,(char *)string);
+	strcpy(param,(char *)String);
 	nexttok();
 	switch(typep&f_typeproc){
 		case tp_cdecl:
@@ -1082,7 +1090,7 @@ unsigned int cloc,snum;
 int returnvalue,dynamicindex;
 int regs;
 	if(tok2==tk_colon){
-		preerror("dublication global label");
+		prError("dublication global label");
 		nexttok();
 		return 0;
 	}
@@ -1153,9 +1161,9 @@ int cnum;
 			itok.number=outptr;
 			itok.segm=NOT_DYNAMIC;
 			itok.flag=0;
-			string[0]=0;
+			String[0]=0;
 			itok.type=tp_ucnovn;
-			addtotree(itok.name);
+			addToTree(itok.name);
 			itok.rec->count=cnum;
 		}
 		nexttok();	// move past id
@@ -1163,7 +1171,7 @@ int cnum;
 		return(tokens);
 	}
 	if(tok2==tk_openbracket){
-		if((cnum=CheckMacros())!=tokens)return cnum;
+		if((cnum= checkMacros())!=tokens)return cnum;
 		tobedefined(am32==FALSE?CALL_NEAR:CALL_32,expectedreturn);
 		cnum=posts-1;
 		param[0]=0;
@@ -1190,7 +1198,7 @@ int cnum;
 		retproc=exitproc;
 		return(expectedreturn);
 	}
-	thisundefined(itok.name);
+	thisUndefined(itok.name);
 	return(tk_long);
 }
 
@@ -1437,7 +1445,8 @@ char idflag=0;
 //			if((actualreturn=doanyundefproc())==tk_void)actualreturn=expectedreturn;
 			actualreturn=doanyundefproc(); //17.09.05 17:56
 			break;
-		default: internalerror("Bad tok in procdo();"); break;
+		default:
+			internalError("Bad tok in procdo();"); break;
 	}
 	convert_returnvalue(expectedreturn,actualreturn);
 	return actualreturn;
@@ -1778,7 +1787,7 @@ int i,reg,reg1;
 					outword(am32==FALSE?0x46d9:0x45d9);
 					op(0xfC);//fld ssdword[bp-4]
 					op(0xD8);
-					outword(0xF85e-am32);	//fcomp [bp-8]
+					outword(0xF85e - am32);    //fcomp [bp-8]
 					endcmpfloat();
 				}
 			}
@@ -2289,7 +2298,7 @@ cont_float:
 			break;
 		default: err=1; break;
 	}
-	if(err)preerror("unable to create comparison, check restrictions");
+	if(err)prError("unable to create comparison, check restrictions");
 	return(swapped);
 }
 
@@ -2341,7 +2350,7 @@ ITOK htok,htok2;
 SINFO hstr,hstr2;
 int preg=(am32==TRUE?EAX:SI);
 int use_cxz=0;
-char *ofsstr=NULL,*ofsstr2=NULL;
+	std::string ofsstr, ofsstr2;
 int usereg=-1;
 int usereg2=-1;
 
@@ -2359,7 +2368,7 @@ unsigned char oinline=useinline;
 /////////////////
 
 	setzeroflag=FALSE;
-	ofsstr=GetLecsem(tk_closebracket,tk_eof,tp_compare);
+	ofsstr = getLexem(tk_closebracket, tk_eof, tp_compare);
 	getoperand();	//NEW 04.10.04 13:45
 	if(tok==tk_openbracket){
 		bracket++;
@@ -2382,13 +2391,13 @@ unsigned char oinline=useinline;
 		case tk_dollar:
 			nexttok();
 		case tk_idasm:
-			if(strcmpi(itok.name,"test")==0){
+			if (boost::iequals(itok.name, "test")) {
 				if(iTest(1)==FALSE)InvOperComp();
 				ittok=0x75;
 				if(type2==tk_openbrace)expecting(tk_closebrace);
 				goto endcomp;
 			}
-			else preerror("Only 'TEST' possible use in compare");
+			else prError("Only 'TEST' possible use in compare");
 			break;
 		case tk_qword:
 		case tk_double:
@@ -2424,9 +2433,8 @@ unsigned char oinline=useinline;
 				retvoid();
 				vartype=itok.rm=(am32==FALSE?tk_word:tk_dword);
 			}
-			if(ofsstr){
-				free(ofsstr);
-				ofsstr=NULL;
+			if (!ofsstr.empty()) {
+				ofsstr.clear();
 			}
 			break;
 		case tk_bytevar: vartype=tk_byte;	break;
@@ -2460,9 +2468,8 @@ unsigned char oinline=useinline;
 			}
 			break;
 		case tk_at:
-			if(ofsstr){
-				free(ofsstr);
-				ofsstr=NULL;
+			if (!ofsstr.empty()) {
+				ofsstr.clear();
 			}
 			nexttok();
 			if(itok.flag&f_retproc){
@@ -2500,7 +2507,7 @@ mac1:
 				case tk_double:
 				case tk_qword: tok=tk_reg64; break;
 				default:
-					preerror("Macro has a return type of void");
+					prError("Macro has a return type of void");
 					tok=tk_reg;
 					vartype=tk_word;
 					break;
@@ -2582,10 +2589,10 @@ mac1:
 	}
 	CheckMinusNum();
 	if(itok2.type!=tp_compare&&tok2!=tk_closebracket){	//сложный операнд
-		if(ofsstr){
+		if (!ofsstr.empty()) {
 			int retreg;
 			razr=getrazr(vartype);
-			if((retreg=CheckIDZReg(ofsstr,AX,razr))!=NOINREG){
+			if((retreg= checkIDZReg(ofsstr, AX, razr))!=NOINREG){
 				GetEndLex(tk_closebracket,tk_semicolon,tp_compare);
 				nexttok();
 				if(razr==r16)ittok=tk_reg;
@@ -2683,16 +2690,31 @@ mac1:
 				break;
 			default:
 				switch(vartype){
-					case tk_int: comparetok=do_e_axmath(1,r16,&ofsstr); ittok=tk_reg; break;
+					case tk_int:
+						comparetok = do_e_axmath(1, r16, ofsstr);
+						ittok = tk_reg;
+						break;
 					case tk_reg:
-					case tk_word: comparetok=do_e_axmath(0,r16,&ofsstr); ittok=tk_reg; break;
-					case tk_char: comparetok=doalmath(1,&ofsstr); ittok=tk_beg; break;
+					case tk_word:
+						comparetok = do_e_axmath(0, r16, ofsstr);
+						ittok = tk_reg;
+						break;
+					case tk_char:
+						comparetok = doalmath(1, ofsstr);
+						ittok = tk_beg;
+						break;
 					case tk_beg:
-					case tk_byte: comparetok=doalmath(0,&ofsstr); ittok=tk_beg; break;
-					case tk_long: comparetok=do_e_axmath(1,r32,&ofsstr); ittok=tk_reg32; break;
+					case tk_byte:
+						comparetok = doalmath(0, ofsstr);
+						ittok = tk_beg;
+						break;
+					case tk_long:
+						comparetok = do_e_axmath(1, r32, ofsstr);
+						ittok = tk_reg32;
+						break;
 					case tk_reg32:
 					case tk_dword:
-						comparetok=do_e_axmath(0,r32,&ofsstr);
+						comparetok = do_e_axmath(0, r32, ofsstr);
 						ittok=tk_reg32;
 						break;
 					case tk_qword:
@@ -2730,7 +2752,7 @@ mac1:
 							}
 						}
 						else{
-							internalerror("Bad vartype value in constructcompare();");
+							internalError("Bad vartype value in constructcompare();");
 							tok=tk_reg; break;
 						}
 				}
@@ -2812,17 +2834,16 @@ nn1:
 		}
 	}
 	if(tok!=tk_closebracket){	//сравнение
-		ofsstr2=GetLecsem(tk_closebracket);
+		ofsstr2 = getLexem(tk_closebracket);
 		comparetok=CheckCompareTok(preg);
 		if(tok>=tk_char&&tok<=tk_double){
 			type2=tok;
-			if(ofsstr2)free(ofsstr2);
-			ofsstr2=GetLecsem(tk_closebracket);
+			ofsstr2 = getLexem(tk_closebracket);
 			getoperand(preg);
 		}
 		if(tok==tk_minus){
 			if(CheckMinusNum()==FALSE){
-				preerror("only negative of constants valid within compairsons");
+				prError("only negative of constants valid within compairsons");
 				nexttok();
 			}
 		}
@@ -2866,10 +2887,10 @@ nn1:
 			if(ittok>=tk_charvar&&ittok<=tk_doublevar&&(tok==tk_proc||tok==tk_id||
 					tok==tk_undefproc||tok==tk_declare||tok==tk_apiproc||tok==tk_ID||
 					itok2.type==tp_opperand||(tok>=tk_charvar&&tok<=tk_doublevar))){
-				if(ofsstr2){
+				if (!ofsstr2.empty()) {
 					int retreg;
 					razr=getrazr(vartype);
-					if((retreg=CheckIDZReg(ofsstr2,AX,razr))!=NOINREG){
+					if((retreg= checkIDZReg(ofsstr2, AX, razr))!=NOINREG){
 						GetEndLex(tk_closebracket);
 						usereg2=retreg==SKIPREG?AX:retreg;
 						if(razr==r16)ittok2=tk_reg;
@@ -2884,19 +2905,19 @@ nn1:
 				switch(ittok){
 					case tk_charvar: sign=1;
 					case tk_bytevar:
-						doalmath(sign,&ofsstr2);
+						doalmath(sign, ofsstr2);
 						usereg2=htok2.number=AX;
 						ittok2=tk_beg;
 						break;
 					case tk_intvar: sign=1;
 					case tk_wordvar:
-						do_e_axmath(sign,r16,&ofsstr2);
+						do_e_axmath(sign, r16, ofsstr2);
 						usereg2=htok2.number=AX;
 						ittok2=tk_reg;
 						break;
 					case tk_longvar: sign=1;
 					case tk_dwordvar:
-						do_e_axmath(sign,r32,&ofsstr2);
+						do_e_axmath(sign, r32, ofsstr2);
 						usereg2=htok2.number=AX;
 						ittok2=tk_reg32;
 						break;
@@ -2957,18 +2978,19 @@ nn1:
 					case tk_reg32:
 						itok.rm=type2;	//тип содержимого в reg32
 						if((ittok==tk_reg32||ittok==tk_reg||ittok==tk_beg)&&
-								htok.number==itok.number)preerror("Comparison two identical registers");
+								htok.number==itok.number)
+							prError("Comparison two identical registers");
 						break;
 				}
 				int next=TRUE;
 				int sign=0;
 				if(ittok==tk_reg32){
-					if(ofsstr2){
+					if (!ofsstr2.empty()) {
 						int retreg;
 						int treg;
 						treg=(htok.number==0?DX:AX);
 						razr=r32;
-						if((retreg=CheckIDZReg(ofsstr2,treg,r32))!=NOINREG){
+						if((retreg= checkIDZReg(ofsstr2, treg, r32))!=NOINREG){
 							if(retreg==SKIPREG)retreg=treg;
 							if(retreg!=htok.number){
 								GetEndLex(tk_closebracket);
@@ -2984,11 +3006,11 @@ nn1:
 							sign=1;
 						case tk_wordvar:
 							if(htok.number!=0){
-								do_e_axmath(sign,r32,&ofsstr2);
+								do_e_axmath(sign, r32, ofsstr2);
 								usereg2=itok.number=0;
 							}
 							else{
-								getintoreg_32(DX,r32,sign,&ofsstr2);
+								getintoreg_32(DX, r32, sign, ofsstr2);
 								usereg2=itok.number=DX;
 							}
 				 			warningreg(regs[1][itok.number]);
@@ -3041,10 +3063,10 @@ nn1:
 	}
 en2:
 	if(ittok>=tk_charvar&&ittok<=tk_floatvar){
-		if(ofsstr){
+		if (!ofsstr.empty()) {
 			int retreg;
 			razr=getrazr(vartype);
-			if((retreg=CheckIDZReg(ofsstr,AX,razr))!=NOINREG){
+			if((retreg= checkIDZReg(ofsstr, AX, razr))!=NOINREG){
 				usereg=retreg==SKIPREG?AX:retreg;
 				if(!((ittok2==tk_reg||ittok2==tk_reg32||ittok2==tk_beg)&&usereg==htok2.number)){
 					if(razr==r16)ittok=tk_reg;
@@ -3150,14 +3172,12 @@ createopcode:
 		default: unknowncompop(); break;
 	}
 endcomp:
-	if(ofsstr){
+	if (!ofsstr.empty()) {
 		if(usereg!=-1)IDZToReg(ofsstr,usereg,razr);
-		free(ofsstr);
 	}
-	if(ofsstr2){
+	if (!ofsstr2.empty()) {
 //		printf("usereg2=%08X %s\n",usereg2,ofsstr2);
 		if(usereg2!=-1)IDZToReg(ofsstr2,usereg2,razr);
-		free(ofsstr2);
 	}
 	if(invertflag==2)invertflag=((outptr+2-startloc)>128?1:0);
 	ittok^=invertflag;
@@ -3262,7 +3282,7 @@ REGISTERSTAT *bakregstat=NULL,*changeregstat=NULL;
 					else *(unsigned long *)&output[(icomp+i)->loc-di]=(unsigned long)(outptr-(icomp+i)->loc);
 				}
 			}
-			if((outptr-icomp->loc)<=127)warningjmp(mesIF,ifline);
+			if((outptr-icomp->loc)<=127)warningJmp(mesIF, ifline);
 			if(tok==tk_else||tok==tk_ELSE){
 				notunreach=TRUE;
 				nexttok();
@@ -3557,7 +3577,7 @@ unsigned int oinptr=inptr2;
 unsigned char ocha=cha2;
 unsigned int oline=linenumber;
 		if(tok==tk_else||tok==tk_ELSE){
-			if(dbg)AddLine();
+			if(dbg)addLine();
 			j=(am32==FALSE?3:5);
 			if(tok2==tk_goto||tok2==tk_break||tok2==tk_continue||//поглотить их
 					tok2==tk_RETURN||tok2==tk_return||tok2==tk_GOTO||tok2==tk_BREAK||tok2==tk_CONTINUE){
@@ -3595,7 +3615,7 @@ unsigned int oline=linenumber;
 					}
 				}
 				if(otok==tk_return)endblock();
-				if((outptr+j-icomp->loc)<=127)warningjmp(mesIF,ifline);
+				if((outptr+j-icomp->loc)<=127)warningJmp(mesIF, ifline);
 				free(icomp);
 				retproc=FALSE;
 				lastcommand=tk_if;
@@ -3611,7 +3631,7 @@ nooptim:
 				else *(unsigned long *)&output[(icomp+i)->loc-4]=(unsigned long)(outptr+j-(icomp+i)->loc);
 			}
 		}
-		if((outptr+j-icomp->loc)<=127)warningjmp(mesIF,ifline);
+		if((outptr+j-icomp->loc)<=127)warningJmp(mesIF, ifline);
 		switch(lastcommand){
 			case tk_return:
 			case tk_RETURN:
@@ -3658,14 +3678,14 @@ nooptim:
 #endif
 			startblock();
 			if(tok==tk_return||tok==tk_RETURN){
-				if(dbg)AddLine();
+				if(dbg)addLine();
 				doreturn(tok);
 			}
 			else docommand();
 			endblock();
 			RestoreStack();
 			temp=outptr-startloc;
-			if(temp<=127)warningjmp(mesELSE,elseline);
+			if(temp<=127)warningJmp(mesELSE, elseline);
 			if(am32==FALSE)*(unsigned short *)&output[startloc-2]=(unsigned short)temp;
 			else *(unsigned long *)&output[startloc-4]=temp;
 			CompareRegStat(changeregstat);
@@ -3684,7 +3704,7 @@ nooptim:
 #endif
 			startblock();
 			if(tok==tk_return||tok==tk_RETURN){
-				if(dbg)AddLine();
+				if(dbg)addLine();
 				doreturn(tok);
 			}
 			else docommand();
@@ -4036,7 +4056,7 @@ LVIC comconst;
 		if(tok==tk_else)j=(am32==FALSE?3:5);
 		else if(tok==tk_ELSE)j=2;
 		notunreach=TRUE;
-		if(dbg)AddLine();
+		if(dbg)addLine();
 		for(unsigned int i=0;i<numcomp;i++){
 			if((icomp+i)->type!=tk_oror){
 				if((outptr+j-(icomp+i)->loc)>127)jumperror(ifline,mesIF);
@@ -4086,13 +4106,13 @@ LVIC comconst;
 #endif
 			startblock();
 			if(tok==tk_return||tok==tk_RETURN){
-				if(dbg)AddLine();
+				if(dbg)addLine();
 				doreturn(tok);
 			}
 			else docommand();
 			endblock();
 			RestoreStack();
-			if((outptr-i)<=127)warningjmp(mesELSE,elseline);
+			if((outptr-i)<=127)warningJmp(mesELSE, elseline);
 			if(am32==FALSE)*(unsigned short *)&output[i-2]=(unsigned short)(outptr-i);
 			else *(unsigned long *)&output[i-4]=(unsigned long)(outptr-i);
 			CompareRegStat(changeregstat);
@@ -4109,7 +4129,7 @@ LVIC comconst;
 #endif
 			startblock();
 			if(tok==tk_return||tok==tk_RETURN){
-				if(dbg)AddLine();
+				if(dbg)addLine();
 				doreturn(tok);
 			}
 			else docommand();
@@ -4181,7 +4201,7 @@ REGISTERSTAT *bakregstat=NULL,*changeregstat=NULL;
 					else *(unsigned long *)&output[(icomp+i)->loc-4]=(unsigned long)(outptr-(icomp+i)->loc);
 				}
 			}
-			if((outptr-icomp->loc)<=127)warningjmp(mesWHILE,ifline);
+			if((outptr-icomp->loc)<=127)warningJmp(mesWHILE, ifline);
 		}
 		free(icomp);
 	}
@@ -4209,7 +4229,8 @@ ITOK oitok,ostructadr;
 SINFO ostr;
 unsigned int oldinptr;
 int otok,otok2;
-char *ostring,*obufrm;
+	std::string ostring;
+	char *obufrm;
 int blinenum,olinenum,oinptr;
 char *ostartline,*bstartline;
 char ocha,bcha;
@@ -4317,7 +4338,7 @@ unsigned int oaddESP=addESP;
 		}
 		else{
 			if(i!=outptr){
-				if((outptr-i)<=127)warningjmp(mesWHILE,olinenum);
+				if((outptr-i)<=127)warningJmp(mesWHILE, olinenum);
 				if(am32) *(unsigned long *)&output[i-4]=(unsigned long)(outptr-i);
 				else *(unsigned short *)&output[i-2]=(unsigned short)(outptr-i);
 			}
@@ -4341,7 +4362,7 @@ unsigned int oaddESP=addESP;
 	icomp=(ICOMP *)MALLOC(sizeof(ICOMP)*MAXIF);	//блок для инфо о сравнениях
 //	oitok2=itok2;
 
-	ostring=BackString((char *)string);
+	ostring= std::string((char *) String);
 	oldinptr=inptr2;
 	oinput=input;
 	bcha=cha2;
@@ -4364,7 +4385,7 @@ COM_MOD *tempcurmod=cur_mod;
 	bstartline=startline;
 	startline=ostartline;
 
-	if(dbg)AddLine();
+	if(dbg)addLine();
 	int ptok=tk_oror;
 	do{
 		i=0;
@@ -4415,8 +4436,7 @@ COM_MOD *tempcurmod=cur_mod;
 	bufrm=obufrm;
 	tok2=otok2;
 	cur_mod=tempcurmod;
-	strcpy((char *)string,ostring);
-	free(ostring);
+	strcpy((char *) String, ostring.c_str());
 	linenumber=linenum2=blinenum;
 	itok2=oitok;
 
@@ -4462,8 +4482,8 @@ unsigned int oaddESP=addESP;
 #endif
 	docommand();
 	SetContinueLabel();
-	if(dbg)AddLine();
-	if(tok!=tk_while)preerror("'while' expected following 'do'");
+	if(dbg)addLine();
+	if(tok!=tk_while)prError("'while' expected following 'do'");
 	icomp=(ICOMP *)MALLOC(sizeof(ICOMP)*MAXIF);	//блок для инфо о сравнениях
 	do{
 #ifdef OPTVARCONST
@@ -4711,7 +4731,7 @@ REGISTERSTAT *bakregstat=NULL,*changeregstat=NULL;
 					output[(icomp+i)->loc-1]=(unsigned char)(outptr-(icomp+i)->loc);
 				}
 				else{
-					if((outptr-(icomp+i)->loc)<=127)warningjmp(mesFOR,ifline);
+					if((outptr-(icomp+i)->loc)<=127)warningJmp(mesFOR, ifline);
 					if(am32==FALSE)*(unsigned short *)&output[(icomp+i)->loc-2]=(unsigned short)(outptr-(icomp+i)->loc);
 					else *(unsigned long *)&output[(icomp+i)->loc-4]=(unsigned long)(outptr-(icomp+i)->loc);
 				}
@@ -4758,8 +4778,8 @@ int vop=0,i=0,razr=r16;
 			if(vop!=0)op66(r16);
 l2:
 			outseg(detok,2);
-			op(0xFE+vop);
-			op(0x08+detok->rm);
+			op(0xFE + vop);
+			op(0x08 + detok->rm);
 			outaddress(detok);
 			break;
 		case tk_reg32:
@@ -4774,7 +4794,7 @@ l2:
 			op(0xC8+detok->number);
 			break;
 		default:
-			preerror(invaliddecrem);
+			prError(invaliddecrem);
 			break;
 	}
 }
@@ -4789,7 +4809,7 @@ void uptdbr(/*int usesw*/)
 		useco[curco]=0;
 		curco++;
 //	}
-	if(curbr==MAXIN)preerror("to many inside bloks");
+	if(curbr==MAXIN)prError("to many inside bloks");
 }
 
 void doloop(unsigned int typeb) 							// both short and long loops
@@ -4820,10 +4840,10 @@ unsigned int oaddESP=addESP;
 	if(dbg&1)KillLastLine();
 	if((tok<tk_charvar||tok>tk_dwordvar)&&tok!=tk_reg&&tok!=tk_reg32
 			&&tok!=tk_beg&&tok!=tk_closebracket)
-		preerror(invaliddecrem);
+		prError(invaliddecrem);
 	if(tok!=tk_closebracket){
 		if(typeb!=tk_loop){
-			if(dbg)AddLine();
+			if(dbg)addLine();
 			int vop=tok==tk_reg?r16:r32;
 			if(typeb==tk_LOOPNZ&&((tok==tk_reg&&itok.number==CX)||
 					(tok==tk_reg32&&itok.number==ECX))&&(!(optimizespeed&&chip>3&&chip<7))){
@@ -4920,7 +4940,7 @@ unsigned int oaddESP=addESP;
 			output[startloc2-1]=(unsigned char)looptok;
 		}
 		else{
-			if(looptok<=127)warningjmp(mesLOOPNZ,sline);
+			if(looptok<=127)warningJmp(mesLOOPNZ, sline);
 			if(am32==FALSE)*(unsigned short *)&output[startloc2-2]=(unsigned short)looptok;
 			else *(unsigned long *)&output[startloc2-4]=(unsigned long)looptok;
 		}
@@ -4936,7 +4956,7 @@ unsigned int oaddESP=addESP;
 
 void GetNameLabel(int type,int num)
 {
-	sprintf((char *)string2,type==tk_break?"BREAK%04X":"CONTINUE%04X",listbr[num]);
+	sprintf((char *)String2,type==tk_break?"BREAK%04X":"CONTINUE%04X",listbr[num]);
 }
 
 void SetBreakLabel()
@@ -4944,7 +4964,7 @@ void SetBreakLabel()
 	curbr--;
 	if(usebr[curbr]!=0){
 		GetNameLabel(tk_break,curbr);
-		updatecall((unsigned int)updatelocalvar((char *)string2,tk_number,outptr),outptr,procedure_start);
+		updatecall((unsigned int)updatelocalvar((char *)String2,tk_number,outptr),outptr,procedure_start);
 //		clearregstat();
 	}
 }
@@ -4954,7 +4974,7 @@ void SetContinueLabel()
 	curco--;
 	if(useco[curco]!=0){
 		GetNameLabel(tk_continue,curco);
-		updatecall((unsigned int)updatelocalvar((char *)string2,tk_number,outptr),outptr,procedure_start);
+		updatecall((unsigned int)updatelocalvar((char *)String2,tk_number,outptr),outptr,procedure_start);
 	}
 }
 
@@ -4977,7 +4997,7 @@ int term;
 	do{
 		term=itok.flag;
 		for(int i=0;i<itok.number;i++){	//ввести строку
-			opd(string[i]);
+			opd(String[i]);
 			loop++;
 		}
 		nexttok();
@@ -4997,7 +5017,7 @@ int term;
 	return loop;
 }
 
-long initglobalvar(int type,long elements,long ssize,char typev)
+long initGlobalVar(int type, long elements, long ssize, TypeValue TypeV)
 {
 long loop;
 long long i=0;
@@ -5005,7 +5025,7 @@ int htok;
 char name[IDLENGTH];
 	nexttok();
 	loop=0;
-	if(dbg&2)AddDataLine((tok==tk_string&&typev!=pointer?(char)3:(char)ssize));
+	if (dbg & 2)AddDataLine((tok == tk_string && TypeV != TypeValue::POINTER ? (char) 3 : (char) ssize));
 loopsw:
 	htok=tok;
 	switch(tok){	//заполнить величинами
@@ -5040,7 +5060,7 @@ cn1:
 			loop=loop*ssize;
 			break;
 		case tk_string:
-			if(typev==pointer){
+			if (TypeV == TypeValue::POINTER){
 				loop=(am32==FALSE?2:4);
 				i=addpoststring(DS);
 				if(am32==FALSE)outwordd(i);
@@ -5058,7 +5078,7 @@ cn1:
 			break;
 		case tk_from:	//считать файл с данными
 			nexttok();
-			loop=dofrom();
+			loop= doFrom();
 			if(elements!=0){
 				for(;loop<ssize*elements;loop++)opd(aligner);
 			}
@@ -5075,7 +5095,7 @@ cn1:
 			nexttok();
 			while(tok!=tk_closebrace){
 				htok=tok;
-				if(typev==pointer){
+				if (TypeV == TypeValue::POINTER){
 					if(tok==tk_string){
 						i=addpoststring(DS);
 						nexttok();
@@ -5164,9 +5184,9 @@ void labelindata()
 	tok=tk_number;
 	itok.number=outptrdata;
 	itok.segm=DS;
-	string[0]=0;
+	String[0]=0;
 	if(FixUp)itok.flag=f_reloc;
-	/*varrec=*/addtotree(itok.name);
+	/*varrec=*/addToTree(itok.name);
 	/*varrec->count=*/FindOff((unsigned char *)itok.name,DS);
 	nexttok();
 	nexttok();
@@ -5175,7 +5195,8 @@ void labelindata()
 void globalvar()	 /* both initialized and unitialized combined */
 {
 long size,loop,i,elements,ssize;
-char done=0,typev;
+char done=0;
+TypeValue typev;
 char var_name[IDLENGTH];
 int type=itok.rm,typebak;	//тип переменной
 unsigned int flag,fflag=itok.flag,dynamic;
@@ -5187,7 +5208,7 @@ idrec *varrec;
 	typebak=type;
 	while(tok!=tk_eof&&done==0){
 		int nnpointr=0;
-		typev=variable;
+		typev = TypeValue::VARIABLE;
 		ssize=size;
 		flag=fflag;
 		type=typebak;
@@ -5210,7 +5231,7 @@ idrec *varrec;
 		if(npointr){
 			if((flag&f_far)!=0||am32!=FALSE)ssize=4;
 			else ssize=2;
-			typev=pointer;
+			typev = TypeValue::POINTER;
 			type=am32==FALSE?tk_word:tk_dword;
 		}
 //			printf("tok=%d %s\n",tok,itok.name);
@@ -5244,15 +5265,15 @@ idrec *varrec;
 					}
 				}
 				if(type==tk_void){
-					preerror("type 'void' not use for declare variables");
+					prError("type 'void' not use for declare variables");
 					break;
 				}
 				dynamic=FALSE;
 				if(tok==tk_assign||(notpost==TRUE&&dynamic_flag==0)){	//= инициализированая переменная
-					if((flag&f_extern))preerror("extern variable do not initialize at declare");
+					if((flag&f_extern))prError("extern variable do not initialize at declare");
 					i=tok;
 					itok.type=tp_gvar;// 11.07.05 21:56 tp_ucnovn;
-					SetNewTok(type,typev);
+					setNewTok(type, typev);
 					if(useStartup==TRUE&&i!=tk_assign&&SaveStartUp(size*elements,var_name)!=FALSE){
 						if(elements==0)ZeroMassiv();	//ошибка
 						tok=i;
@@ -5267,7 +5288,7 @@ idrec *varrec;
 					itok.rm=(am32==FALSE?rm_d16:rm_d32);
 					itok.npointr=(unsigned short)npointr;
 
-					varrec=addtotree(var_name);
+					varrec= addToTree(var_name);
 					if((count=FindOff((unsigned char *)var_name,DS))==0){
 						if(dynamic_flag)dynamic=DYNAMIC_VAR;
 					}
@@ -5288,7 +5309,7 @@ idrec *varrec;
 						varrec->recpost=dynamic;
 					}
 					else{
-						loop=initglobalvar(type,elements,ssize,typev);
+						loop= initGlobalVar(type, elements, ssize, typev);
 						varrec->recsize=loop;
 						datasize+=loop;
 					}
@@ -5305,7 +5326,7 @@ idrec *varrec;
 						case tk_semicolon: done=1;//	;
 						case tk_camma:	 //, post global type
 							itok.type=tp_postvar;//11.07.05 21:57 tp_ucnovn;
-							SetNewTok(type,typev);
+							setNewTok(type, typev);
 							if((flag&f_extern)==0&&useStartup==TRUE&&dynamic==0){
 								if(SaveStartUp(ssize*elements,var_name)!=FALSE){
 									nexttok();
@@ -5327,7 +5348,7 @@ idrec *varrec;
 							itok.size=loop;
 							itok.rm=(am32==FALSE?rm_d16:rm_d32);
 							itok.npointr=(unsigned short)npointr;
-							varrec=addtotree(var_name);
+							varrec= addToTree(var_name);
 							varrec->count=count;
 							if((flag&f_extern)==0)AddPostData(loop);
 							nexttok();
@@ -5359,13 +5380,13 @@ idrec *varrec;
 	dopoststrings();
 }
 
-void SetNewTok(int type,int typev)
+void setNewTok(int type, TypeValue TypeV)
 {
-	switch(typev){
-		case variable:
+	switch(TypeV){
+		case TypeValue::VARIABLE:
 			if(type>=tk_char&&type<=tk_double)tok=type+(tk_charvar-tk_char);
 			break;
-		case pointer:
+		case TypeValue::POINTER:
 //			if(type>=tk_void&&type<=tk_float){
 				tok=tk_pointer;
 				itok.type=(unsigned short)type;
@@ -5392,7 +5413,7 @@ int i=0;
 			itok.post=0;
 			itok.rm=(am32==FALSE?rm_d16:rm_d32);
 			itok.type=tp_ucnovn;
-			addtotree(var_name);
+			addToTree(var_name);
 			startStartup+=size;
 			return TRUE;
 		}
@@ -5457,7 +5478,7 @@ int next=1;
 	if(next)nexttok();
 }
 
-void CalcRegPar(int reg,int def,char **ofsstr)
+void calcRegPar(int reg, int def, const std::string &ofsstr)
 {
 char signflag=0;
 int razr;
@@ -5554,7 +5575,7 @@ int GetTypeParam(char c)
 void doregparams()
 {
 int i=0;
-char *ofsstr=NULL;
+	std::string ofsstr;
 int razr;
 int retreg;
 	ClearRegister();
@@ -5563,16 +5584,15 @@ int retreg;
 		nexttok();
 		i++;
 	}
-	ofsstr=GetLecsem(tk_camma,tk_closebracket);
+	ofsstr = getLexem(tk_camma, tk_closebracket);
 	getoperand();
 	if(tok!=tk_closebracket){
 		if(strlen(param)!=0){
 		int def;
-			char *oparam=BackString(param);
+			char *oparam = strdup(param);
 			for(;;){
 				while(tok==tk_camma){
-					if(ofsstr)free(ofsstr);
-					ofsstr=GetLecsem(tk_camma,tk_closebracket);
+					ofsstr = getLexem(tk_camma, tk_closebracket);
 					getoperand();
 				}
 				if((def=GetTypeParam(oparam[i++]))==0){
@@ -5587,10 +5607,10 @@ int retreg;
 //					printf("%08X\n",retreg);
 				}
 				else retreg=oparam[i++]-0x30;
-				if(ofsstr){
+				if(!ofsstr.empty()){
 					if((razr=getrazr(def))!=r64){
 						int retr;
-						if((retr=CheckIDZReg(ofsstr,retreg,razr))!=NOINREG){
+						if((retr= checkIDZReg(ofsstr, retreg, razr))!=NOINREG){
 							GetEndLex(tk_camma,tk_closebracket);
 							if(retr!=SKIPREG)GenRegToReg(retreg,retr,razr);
 							nexttok();
@@ -5599,12 +5619,11 @@ int retreg;
 					}
 				}
 				if(def==tk_fpust)float2stack(retreg);
-				else CalcRegPar(retreg,def,&ofsstr);
+				else calcRegPar(retreg, def, ofsstr);
 endparam:
-				if(ofsstr&&razr!=r64){
+				if (!ofsstr.empty() && razr != r64) {
 					IDZToReg(ofsstr,retreg,razr);
-					free(ofsstr);
-					ofsstr=NULL;
+					ofsstr.clear();
 				}
 				if(tok!=tk_camma){
 					if(tok!=tk_closebracket)expected(')');
@@ -5618,28 +5637,26 @@ endparam:
 char regpar[6]={AX,BX,CX,DX,DI,SI};
 			for(;i<6;i++){
 				if(tok==tk_camma){
-					if(ofsstr)free(ofsstr);
-					ofsstr=GetLecsem(tk_camma,tk_closebracket);
+					ofsstr = getLexem(tk_camma, tk_closebracket);
 					getoperand();
 					if(tok==tk_camma)continue;
 				}
 				retreg=regpar[i];
-				if(ofsstr&&tok!=tk_camma){
+				if (!ofsstr.empty() && tok != tk_camma) {
 					razr=(am32==FALSE?r16:r32);
 					int retr;
-					if((retr=CheckIDZReg(ofsstr,retreg,razr))!=NOINREG){
+					if((retr= checkIDZReg(ofsstr, retreg, razr))!=NOINREG){
 						GetEndLex(tk_camma,tk_closebracket);
 						if(retr!=SKIPREG)GenRegToReg(retreg,retr,razr);
 						nexttok();
 						goto endparam1;
 					}
 				}
-				CalcRegPar(retreg,tokens,&ofsstr);
+				calcRegPar(retreg, tokens, ofsstr);
 endparam1:
-				if(ofsstr){
+				if(!ofsstr.empty()){
 					IDZToReg(ofsstr,retreg,razr);
-					free(ofsstr);
-					ofsstr=NULL;
+					ofsstr.clear();
 				}
 				if(tok!=tk_camma){
 					if(tok!=tk_closebracket)expected(')');
@@ -5649,7 +5666,6 @@ endparam1:
 		}
 		setzeroflag=FALSE;
 	}
-	if(ofsstr)free(ofsstr);
 }
 
 int CheckUses()
@@ -5659,13 +5675,13 @@ int regs=0;
 int bracket=FALSE;
 	memset((SAVEREG *)psavereg,0,sizeof(SAVEREG));
 	if(tok==tk_openbracket){
-		if(stricmp(itok2.name,"uses")==0){
+		if (boost::iequals(itok2.name, "uses"s)) {
 			bracket=TRUE;
 			nexttok();
 		}
 		else return 0;
 	}
-	if(stricmp(itok.name,"uses")==0){
+	if (boost::iequals(itok.name, "uses"s)) {
 		nexttok();
 		while(tok==tk_reg32||tok==tk_reg||tok==tk_beg){
 			i=r32;
@@ -5707,7 +5723,7 @@ void Enter()
 
 void setproc(int defflag)
 {
-char *bstring;
+	std::string bstring;
 unsigned char oinline,ooptimizespeed;
 ITOK otok;
 unsigned int i;
@@ -5740,21 +5756,21 @@ unsigned int oregidx;
 			if(dbg){
 				KillLastLine();
 				KillLastLine();
-				AddLine();
+				addLine();
 			}
 			updatetree();
 		}
  	}
 	else{	//иначе добавить в дерево
-		string[0]=0;
+		String[0]=0;
 		itok.type=tp_ucnovn;
-		addtotree(itok.name);
+		addToTree(itok.name);
 	}
 //	puts(itok.name);
 	if((i=FindOff((unsigned char *)itok.name,CS))!=0){
 		itok.rec->count=i;
 	}
-	bstring=BackString((char *)string);
+	bstring = std::string((char *) String);
 	otok=itok;
 	if(strcmp(mesmain,otok.name)==0){
 		if(startuptomain==TRUE&&comfile==file_com)doprestuff();
@@ -5762,7 +5778,7 @@ unsigned int oregidx;
 			for(i=0;i<numdomain;i++){
 				strcpy(itok.name,domain+i*IDLENGTH);
 				tok=tk_ID;
-				searchvar(itok.name,0);
+				searchVar(itok.name, 0);
 				switch(tok){
 					case tk_ID:
 					case tk_id:
@@ -5786,7 +5802,7 @@ unsigned int oregidx;
 						callloc(itok.number);
 						break;
 					default:
-						preerror("impossible type for startup function");
+						prError("impossible type for startup function");
 						break;
 				}
 			}
@@ -5800,7 +5816,7 @@ unsigned int oregidx;
 	if(tok!=tk_closebracket){
 		if((current_proc_type&f_typeproc)!=tp_fastcall){
 			declareparams();
-			if(otok.type==tp_declare&&defflag&&strcmp(bstring,param)!=0){
+			if (otok.type == tp_declare && defflag && bstring != param) {
 //					printf("old=%s new=%s\n",bstring,param);
 					redeclare(otok.name);
 			}
@@ -5809,17 +5825,15 @@ unsigned int oregidx;
 		else{
 			declareparamreg();
 		}
-		if(bstring)free(bstring);
-		bstring=BackString((char *)param);
-	}
-	else if((current_proc_type&f_typeproc)!=tp_fastcall&&bstring[0]!=0){
+		bstring = std::string((char *) param);
+	} else if ((current_proc_type & f_typeproc) != tp_fastcall && !bstring.empty()) {
 		if(bstring[0]!='V'&&bstring[0]!='A'){
 			redeclare(otok.name);
 //			puts(bstring);
 		}
 	}
 
-	strcpy((char *)string,bstring);
+	strcpy((char *) String, bstring.c_str());
 	itok=otok;
 	tok=tk_proc;
 	updatetree();
@@ -5869,7 +5883,7 @@ elementteg *bazael=searchteg->baza;
 	if(inlineflag==0&&retproc==FALSE&&(i||(lastcommand!=tk_goto&&lastcommand!=tk_GOTO)))leaveproc();
 	endblock();
 	initBP=0;
-	strcpy((char *)string,bstring);
+	strcpy((char *) String, bstring.c_str());
 	itok=otok;
 	tok=tk_proc;
 	itok.size=outptr-procedure_start;
@@ -5884,7 +5898,6 @@ elementteg *bazael=searchteg->baza;
 	linenumber=startline;
 	killlocals();
 	linenumber=i;
-	free(bstring);
 	optimizespeed=ooptimizespeed;
 	useinline=oinline;
 	*(unsigned int *)&idxregs=oregidx;
@@ -6246,7 +6259,7 @@ structteg *tteg=NULL,*nteg;
 		}
 		if(tok>=tk_char&&tok<=tk_double){
 			type=tok;
-			SetNewTok(tok,variable);
+			setNewTok(tok, TypeValue::VARIABLE);
 			paramtok=tok;
 		}
 		else if(tok==tk_beg||tok==tk_reg||tok==tk_reg32||tok==tk_reg64||tok==tk_fpust)flag=3;
@@ -6272,7 +6285,7 @@ structteg *tteg=NULL,*nteg;
 				if(tok==tk_id||tok==tk_ID){	//проверить на типы определенные через define
 					skipfind=FALSE;
 					int otok=tok;
-					searchtree(&ptok,&otok,string);
+					searchTree(&ptok, &otok, String);
 					if(otok>=tk_char&&otok<=tk_double){
 						tok=otok;
 						itok=ptok;
@@ -6300,7 +6313,7 @@ structteg *tteg=NULL,*nteg;
 					else{
 						if(tok>=tk_char&&tok<=tk_double){
 							type=tok;
-							SetNewTok(tok,variable);
+							setNewTok(tok, TypeValue::VARIABLE);
 							paramtok=tok;
 							nexttok();
 							while(tok==tk_mult){
@@ -6482,9 +6495,10 @@ unsigned int oldinptr,oldendinptr;
 unsigned char bcha;
 int otok,otok2;
 char *ostartline;
-char *ostring,*obufrm;
+	std::string ostring;
+	char *obufrm;
 COM_MOD *ocurmod;
-	ostring=BackString((char *)string);
+	ostring = std::string((char *) String);
 	oldinput=input;	//сохр некотор переменые
 	oldinptr=inptr2;
 	ostructadr=structadr;
@@ -6507,7 +6521,7 @@ COM_MOD *ocurmod;
 	tok=tk_openbrace;
 	SizeBackBuf=0;
 	ostartline=startline;
-	startline=input;
+	startline = (char *) input;
 	endinptr=strlen((char *)input);
 	endinput=startline+endinptr;
 
@@ -6526,10 +6540,9 @@ COM_MOD *ocurmod;
 	if(bufrm)free(bufrm);
 	bufrm=obufrm;
 	tok2=otok2;
-	strcpy((char *)string,ostring);
+	strcpy((char *) String, ostring.c_str());
 	if(strinf.bufstr)free(strinf.bufstr);
 	structadr=ostructadr;
-	free(ostring);
 
 	cur_mod=ocurmod;
 }
@@ -6543,10 +6556,11 @@ unsigned int oldinptr,oldendinptr;
 unsigned char bcha;
 int otok,otok2;
 char *ostartline;
-char *ostring,*obufrm;
+	std::string ostring;
+	char *obufrm;
 int retcode=FALSE;
 //	if(bufrm)puts(bufrm);
-	ostring=BackString((char *)string);
+	ostring= std::string((char *) String);
 	oldinput=input;	//сохр некотор переменые
 	oldinptr=inptr2;
 	ostructadr=structadr;
@@ -6564,7 +6578,7 @@ int retcode=FALSE;
 	ostartline=startline;
 	cha2=input[inptr2++];
 	endinptr=strlen((char *)input);
-	startline=input+ofs;
+	startline = (char *) (input + ofs);
 	endinput=startline+endinptr;
 	nexttok();
 	wtok=itok;
@@ -6590,10 +6604,9 @@ int retcode=FALSE;
 	if(bufrm)free(bufrm);
 	bufrm=obufrm;
 	tok2=otok2;
-	strcpy((char *)string,ostring);
+	strcpy((char *) String, ostring.c_str());
 	if(strinf.bufstr)free(strinf.bufstr);
 	structadr=ostructadr;
-	free(ostring);
 	return retcode;
 }
 
@@ -6904,7 +6917,7 @@ locstruct:
 							lrec->rec.recnumber=0;
 							lrec->rec.recpost=DYNAMIC_VAR;
 							lrec->rec.line=linenumber;
-							lrec->rec.file=currentfileinfo;
+							lrec->rec.file=CurrentFileInfoNum;
 							lrec->rec.count=0;
 //							lptr->rec.type=(unsigned short)type;
 							lrec->rec.npointr=(unsigned short)numpointr;
@@ -7034,7 +7047,7 @@ lab1:
 void IsUses(idrec *rec)
 {
 int i;
-	if(tok==tk_openbracket&&stricmp(itok2.name,"uses")==0){
+	if (tok == tk_openbracket && boost::iequals(itok2.name, "uses"s)) {
 		nexttok();
 		i=0;
 		nexttok();
@@ -7074,7 +7087,7 @@ idrec *rec;
 		i=2;
 		if(am32||(oflag&f_far))i=4;
 		if(tok==tk_assign||(notpost==TRUE&&dynamic_flag==0)){	//= инициализированая переменная
-			if((oflag&f_extern))preerror("extern variable do not initialize at declare");
+			if((oflag&f_extern))prError("extern variable do not initialize at declare");
 			if(alignword&&(!dynamic_flag))alignersize+=AlignCD(DS,i);
 			FindOff((unsigned char *)pname,DS);
 			itok.number=outptrdata;
@@ -7086,7 +7099,7 @@ idrec *rec;
 			else{
 				ITOK oitok;
 				oitok=itok;
-				initglobalvar(tk_word,1,i,variable);
+				initGlobalVar(tk_word, 1, i, TypeValue::VARIABLE);
 				itok=oitok;
 				next=FALSE;
 			}
@@ -7115,8 +7128,8 @@ idrec *rec;
 	itok.flag=oflag;
 	if(itok.rm==tokens)itok.rm=(am32==0?tk_word:tk_dword);
 //	printf("rm=%d %s\n",itok.rm,itok.name);
-	strcpy((char *)string,param);
-	rec=addtotree(pname);
+	strcpy((char *)String,param);
+	rec= addToTree(pname);
 	if(next)nexttok();
 	else tok=j;
 	IsUses(rec);
@@ -7129,7 +7142,7 @@ void define_procedure()
 		itok.segm=NOT_DYNAMIC;
 		if(AlignProc!=FALSE)AlignCD(CS,alignproc);
 		procedure_start=outptr;
-		if(dbg)AddLine();
+		if(dbg)addLine();
 //		itok.flag&=~f_static; 26.08.05 00:09
 		setproc((tok==tk_id||tok==tk_ID)?0:1);
 		dopoststrings();
@@ -7138,7 +7151,7 @@ void define_procedure()
 
 void interruptproc()
 {
-char *bstring;
+	std::string bstring;
 ITOK otok;
 	inlineflag=0;
 	procedure_start=outptr;
@@ -7155,7 +7168,7 @@ ITOK otok;
 	if(tok==tk_ID||tok==tk_id){
 		tok=tk_interruptproc;
 		itok.type=tp_ucnovn;
-		addtotree((char *)string);
+		addToTree((char *) String);
 	}
 	else if(tok==tk_undefproc){
 		tok=tk_interruptproc;
@@ -7164,7 +7177,7 @@ ITOK otok;
 	}
 	else idalreadydefined();
 	itok.rec->count=FindOff((unsigned char *)itok.name,CS);
-	bstring=BackString((char *)string);
+	bstring = std::string((char *) String);
 	otok=itok;
 	nextexpecting2(tk_openbracket);
 	expecting(tk_closebracket);
@@ -7183,12 +7196,11 @@ ITOK otok;
 		else if(localsize>0)Leave();
 	}
 	initBP=0;
-	strcpy((char *)string,bstring);
+	strcpy((char *) String, bstring.c_str());
 	itok=otok;
 	tok=tk_interruptproc;
 	itok.size=outptr-procedure_start;
 	updatetree();
-	free(bstring);
 	killlocals();
 	nexttok();
 	dopoststrings();
@@ -7270,7 +7282,7 @@ paraminfo *pi;
 			case ')': ns--; break;
 			case ',':
 				if(ns==1){
-					if(numpar==127)preerror("To many parametrs in function");
+					if(numpar==127)prError("To many parametrs in function");
 					numpar++;
 					(pi+numpar)->ofspar=i+1;
 					(pi+numpar)->type[0]=0;
@@ -7429,9 +7441,9 @@ int vartype;
 int stackpar=0;
 int i;
 int jj=0;
-char *bparam;	//буфер для декларируемых параметров
+	std::string bparam;    //буфер для декларируемых параметров
 int ip=-1;	//номер параметра
-char *ofsstr=NULL;
+	std::string ofsstr;
 int useAX=FALSE;
 int retreg=AX;
 unsigned char oaddstack=addstack;
@@ -7441,9 +7453,9 @@ int structsize;
 struct idrec *ptrs;
 	addstack=FALSE;
 	if(am32!=FALSE)jj=2;
-	bparam=BackString(param);
+	bparam = std::string(param);
 	if(param[0]!=0)ip=0;
-	ofsstr=GetLecsem(tk_camma,tk_closebracket);
+	ofsstr = getLexem(tk_camma, tk_closebracket);
 	expectingoperand(tk_openbracket);
 	ClearRegister();
 	if(tok!=tk_closebracket){
@@ -7480,7 +7492,7 @@ struct idrec *ptrs;
 									c|=(bparam[ip]-0x30)*256;
 									ip++;
 								}
-								CalcRegPar(c,vartype,&ofsstr);
+								calcRegPar(c, vartype, ofsstr);
 							}
 							goto endparam;
 						}
@@ -7548,10 +7560,10 @@ struct idrec *ptrs;
 					itok.lnumber=-itok.lnumber;
 				}
 				int razr;
-				if(ofsstr){
+				if (!ofsstr.empty()) {
 					razr=getrazr(vartype);
 					int retr;
-					if((retr=CheckIDZReg(ofsstr,AX,razr))!=NOINREG){
+					if((retr= checkIDZReg(ofsstr, AX, razr))!=NOINREG){
 //						printf("reg=%d\n",retr);
 						GetEndLex(tk_camma,tk_closebracket);
 						if(razr==r8)razr=am32==0?r16:r32;
@@ -7571,7 +7583,7 @@ struct idrec *ptrs;
 					switch(vartype){
 						case tk_struct:
 							i=structsize/((am32+1)*2);
-							do_e_axmath(0,r32,&ofsstr);
+							do_e_axmath(0, r32, ofsstr);
 							ClearReg(AX);
 							if(am32){
 								i--;
@@ -7602,7 +7614,7 @@ struct idrec *ptrs;
 						case tk_char: i=1;
 						case tk_byte:
 							stackpar+=jj;
-							doalmath((char)i,&ofsstr);
+							doalmath((char) i, ofsstr);
 							addESP+=2+jj;
 							break;
 						case tk_int: i=1;
@@ -7639,7 +7651,7 @@ blokl:
 								}
 								tok=otok;
 							}
-							do_e_axmath(i,razr,&ofsstr);
+							do_e_axmath(i, razr, ofsstr);
 							addESP+=razr==r16?2:4;
 							op66(razr);
 							break;
@@ -7762,7 +7774,7 @@ nopush:
 									if(tok!=tk_undefofs)outseg(&itok,1);
 									op(0xB8);
 									if(tok==tk_undefofs){
-										AddUndefOff(0,(char *)string);
+										AddUndefOff(0,(char *)String);
 										outdword(itok.number);
 									}
 									else outaddress(&itok);
@@ -7784,7 +7796,7 @@ nopush:
 									op(0xFF);	// PUSH [dword]
 									op(0x30+itok.rm);
 									if(tok==tk_undefofs){
-										AddUndefOff(0,(char *)string);
+										AddUndefOff(0,(char *)String);
 										outdword(itok.number);
 									}
 									else outaddress(&itok);
@@ -7804,7 +7816,7 @@ nopush:
 								break;
 							default:
 //								preerror("for parametr function required structure");
-								do_e_axmath(0,r32,&ofsstr);
+								do_e_axmath(0, r32, ofsstr);
 								ClearReg(AX);
 								if(am32){
 									i--;
@@ -7901,7 +7913,7 @@ nopush:
 							case tk_undefofs:
 								if(chip>=2&&(!(optimizespeed&&(chip==5||chip==6)))){
 									op(0x68);	// PUSH const
-									if(tok==tk_undefofs)AddUndefOff(0,(char *)string);
+									if(tok==tk_undefofs)AddUndefOff(0,(char *)String);
 									else (itok.flag&f_extern)==0?setwordpost(&itok):setwordext(&itok.number);
 									if(am32==FALSE)outword((unsigned int)itok.number);
 									else outdword(itok.number);
@@ -7912,9 +7924,13 @@ deflt:
 //if(tok==tk_new)puts("monovar default");
 								switch(vartype){
 									case tk_int: i=1;
-									case tk_word: do_e_axmath(i,r16,&ofsstr); break;
+									case tk_word:
+										do_e_axmath(i, r16, ofsstr);
+										break;
 									case tk_char: i=1;
-									case tk_byte: doalmath((char)i,&ofsstr); break;
+									case tk_byte:
+										doalmath((char) i, ofsstr);
+										break;
 									default: beep(); break;
 								}
 								op(0x50); 	/* PUSH AX */
@@ -7978,7 +7994,7 @@ pushmem:
 								if(optimizespeed&&(chip==5||chip==6))goto def;
 								op66(r32);
 								op(0x68);	// PUSH const
-								if(tok==tk_undefofs)AddUndefOff(0,(char *)string);
+								if(tok==tk_undefofs)AddUndefOff(0,(char *)String);
 								else (itok.flag&f_extern)==0?setwordpost(&itok):setwordext(&itok.number);
 								outdword(itok.number);
 								break;
@@ -7996,7 +8012,7 @@ def:
 										break;
 
 									}
-									do_e_axmath(i,r32,&ofsstr);
+									do_e_axmath(i, r32, ofsstr);
 									op66(r32);
 									op(0x50);	// PUSH EAX
 									useAX=TRUE;
@@ -8066,7 +8082,7 @@ def:
 								outword(0x6A);	// PUSH 8 extend to 32 bit
 								op66(r32);
 								op(0x68);	// PUSH const
-								if(tok==tk_undefofs)AddUndefOff(0,(char *)string);
+								if(tok==tk_undefofs)AddUndefOff(0,(char *)String);
 								else (itok.flag&f_extern)==0?setwordpost(&itok):setwordext(&itok.number);
 								outdword(itok.number);
 								break;
@@ -8075,7 +8091,7 @@ def:
 								else{
 									op66(r32);
 									outword(0x6A);
-									do_e_axmath(0,r32,&ofsstr);
+									do_e_axmath(0, r32, ofsstr);
 									op66(r32);
 									op(0x50);	// PUSH EAX
 									useAX=TRUE;
@@ -8093,13 +8109,12 @@ endparam1:
 				}
 			}
 endparam:
-			if(ofsstr){
+			if (!ofsstr.empty()) {
 				if(useAX)IDZToReg(ofsstr,retreg,getrazr(vartype));
-				free(ofsstr);
-				ofsstr=NULL;
+				ofsstr.clear();
 			}
 			if(tok==tk_camma){
-				ofsstr=GetLecsem(tk_camma,tk_closebracket);
+				ofsstr = getLexem(tk_camma, tk_closebracket);
 				getoperand();
 			}
 			else if(tok==tk_closebracket)done=1;
@@ -8109,12 +8124,10 @@ endparam:
 			}
 		}
 	}
-	if(ofsstr){
+	if(!ofsstr.empty()){
 		if(useAX)IDZToReg(ofsstr,retreg,getrazr(vartype));
-		free(ofsstr);
 	}
 	if(ip!=-1&&bparam[ip]!=0&&bparam[ip]!='A'&&bparam[ip]!='V')missingpar();
-	free(bparam);
 	setzeroflag=FALSE;
 	addstack=oaddstack;
 	useinline=oinline;
@@ -8346,7 +8359,7 @@ void dynamic_proc()
 {
 int dtok,start,size,line;
 ITOK otok;
-char *bstring;
+	std::string bstring;
 idrec *ptr;
 _PROCINFO_ *pinfo;
 	if(itok.npointr)itok.rm=(am32==TRUE?tk_dword:tk_word);
@@ -8356,14 +8369,14 @@ _PROCINFO_ *pinfo;
 	switch(tok){
 		case tk_id:
 		case tk_ID:
-			string[0]=0;
+			String[0]=0;
 		case tk_undefproc:
 		case tk_declare:
 			break;
 		default: idalreadydefined(); break;
 	}
-	if(itok.flag&f_export)preerror("'_export' not use in dynamic functions");
-	bstring=BackString((char *)string);
+	if(itok.flag&f_export)prError("'_export' not use in dynamic functions");
+	bstring = std::string((char *) String);
 	start=inptr2-1;
 	pinfo=(_PROCINFO_ *)MALLOC(sizeof(_PROCINFO_));
 	if(itok.flag&f_classproc)pinfo->classteg=searchteg;
@@ -8390,8 +8403,7 @@ _PROCINFO_ *pinfo;
 		if(tok2!=tk_closebracket&&(otok.flag&f_typeproc)==tp_fastcall){
 			nexttok();	//параметры регистровой процедуры
 			declareparamreg();
-			free(bstring);
-			bstring=BackString((char *)param);
+			bstring = std::string((char *) param);
 			nexttok();
 			inptr=inptr2;
 			cha=cha2;
@@ -8402,14 +8414,12 @@ _PROCINFO_ *pinfo;
 		inptr=inptr2;
 		cha=cha2;
 		if(!SkipParam()){
-			free(bstring);
 			return;
 		}
 		FastTok(1);
 	}
-	if(tok==tk_semicolon)preerror("error declare dynamic function");
+	if(tok==tk_semicolon)prError("error declare dynamic function");
 	if((!SkipLocalVar())||(!SkipBlock())){
-		free(bstring);
 		return;
 	}
 	size=inptr-start+1;
@@ -8418,12 +8428,9 @@ _PROCINFO_ *pinfo;
 	linenum2=linenumber;
 	linenumber=line;
 	itok=otok;
-	strcpy((char *)string,bstring);
-	free(bstring);
-	bstring=(char *)MALLOC(size+1);
-	strncpy(bstring,(char *)(input+start),size);
+	strcpy((char *) String, bstring.c_str());
+	bstring = std::string((const char *) (input + start), size);
 	bstring[size-1]=';';
-	bstring[size]=0;
 
 //	printf("tok=%d %s\n%s\n",dtok,itok.name,bstring);
 	itok.size=0;
@@ -8434,7 +8441,7 @@ _PROCINFO_ *pinfo;
 		itok.number=secondcallnum++;
 		itok.type=tp_ucnovn;
 		if((i=FindUseName(itok.name))!=0)itok.segm=DYNAMIC_USED;
-		ptr=addtotree(itok.name);
+		ptr= addToTree(itok.name);
 		if(i){
 			ptr->count=i;
 			ptr=itok.rec;
@@ -8451,8 +8458,8 @@ _PROCINFO_ *pinfo;
 		if(dtok==tk_undefproc&&(itok.flag&f_classproc))AddDynamicList(ptr);
 	}
 	ptr->line=linenumber;
-	ptr->file=currentfileinfo;
-	pinfo->buf=bstring;
+	ptr->file=CurrentFileInfoNum;
+	pinfo->buf = strdup(bstring.c_str());
 	ptr->pinfo=pinfo;
 //	ptr->sbuf=bstring;
 //	linenumber=linenum2;
@@ -8490,7 +8497,7 @@ int snum=0;
 	typep=itok.flag;
 	otok=itok;
 	if(tok==tk_ID)param[0]=0;
-	else strcpy(param,(char *)string);
+	else strcpy(param,(char *)String);
 	nexttok();
 	orettype=returntype;
 	returntype=actualreturn;	//01.08.04 14:45
@@ -8516,7 +8523,7 @@ int snum=0;
 		if((actualreturn=includeit(0))==-1){
 			char holdstr[IDLENGTH+16];
 			sprintf(holdstr,"unknown macro '%s'",itok.name);
-			preerror(holdstr);
+			prError(holdstr);
 		}
 	}
 	else insert_dynamic(TRUE);
@@ -8556,15 +8563,21 @@ int updates=0;
 				hold--;	 // CALL_SHORT
 				if(short_ok(hold))output[(postbuf+count)->loc]=(unsigned char)hold;
 				else{
-					if((postbuf+count)->type==BREAK_SHORT)preerror3("BREAK distance too large, use break",(postbuf+count)->line);
-					else if((postbuf+count)->type==CONTINUE_SHORT)preerror3("CONTINUE distance too large, use continue",(postbuf+count)->line);
-					else preerror3(shorterr,(postbuf+count)->line,(postbuf+count)->file);
+					if((postbuf+count)->type==BREAK_SHORT)
+						prError3("BREAK distance too large, use break", (postbuf + count)->line);
+					else if((postbuf+count)->type==CONTINUE_SHORT)
+						prError3("CONTINUE distance too large, use continue", (postbuf + count)->line);
+					else prError3(shorterr, (postbuf + count)->line, (postbuf + count)->file);
 				}
 			}
 			if(hold<127){
-				if((postbuf+count)->type==JMP_NEAR||(postbuf+count)->type==JMP_32)warningjmp("GOTO",(postbuf+count)->line,(postbuf+count)->file);
-				if((postbuf+count)->type==BREAK_NEAR||(postbuf+count)->type==BREAK_32)warningjmp("BREAK",(postbuf+count)->line);
-				if((postbuf+count)->type==CONTINUE_NEAR||(postbuf+count)->type==CONTINUE_32)warningjmp("CONTINUE",(postbuf+count)->line);
+				if((postbuf+count)->type==JMP_NEAR||(postbuf+count)->type==JMP_32)
+					warningJmp("GOTO", (postbuf + count)->line, (postbuf + count)->file);
+				if((postbuf+count)->type==BREAK_NEAR||(postbuf+count)->type==BREAK_32)warningJmp("BREAK", (postbuf +
+																										   count)->line);
+				if((postbuf+count)->type==CONTINUE_NEAR||(postbuf+count)->type==CONTINUE_32)warningJmp("CONTINUE",
+																									   (postbuf +
+																										count)->line);
 			}
 			killpost(count);
 			updates++;
@@ -8577,8 +8590,8 @@ int updates=0;
 
 void define_locallabel()
 {
-	FindOff(string,CS);
-	updatecall((unsigned int)updatelocalvar((char *)string,tk_number,outptr),outptr,procedure_start);
+	FindOff(String,CS);
+	updatecall((unsigned int)updatelocalvar((char *)String,tk_number,outptr),outptr,procedure_start);
 	nextexpecting2(tk_colon);
 	RestoreStack();
 	clearregstat();
@@ -8594,38 +8607,36 @@ void  addacall(unsigned int idnum,unsigned char callkind)
 	(postbuf+posts)->loc=outptr+1;
 	(postbuf+posts)->type=callkind;
 	(postbuf+posts)->line=(unsigned short)linenumber;
-	(postbuf+posts)->file=(unsigned short)currentfileinfo;
+	(postbuf+posts)->file=(unsigned short)CurrentFileInfoNum;
 	posts++;
 }
 
-unsigned int dofrom() // returns number of bytes read from FROM file
+size_t doFrom() // returns number of bytes read from FROM file
 {
 int filehandle;
-long filesize;
+	size_t filesize;
 	if(tok!=tk_string){
 		stringexpected();
 		return(0);
 	}
 	filehandle=open((char *)string3,O_BINARY|O_RDONLY);
 	if(filehandle==-1){
-		unableopenfile((char *)string3);
+		unableToOpenFile((char *) string3);
 		return(0);
 	}
-#ifdef _UNIX_
-	if((filesize=getfilelen(filehandle))==-1L){
-#else
-	if((filesize=filelength(filehandle))==-1L){
-#endif
-		preerror("Unable to determine FROM file size");
+	boost::system::error_code ec;
+	filesize = fs::file_size((char *)string3, ec);
+	if (ec) {
+		prError("Unable to determine FROM file size: " + ec.message());
 		close(filehandle);
 		return(0);
 	}
 	if(am32==FALSE&&filesize>=0xFFFFL){
-		preerror("FROM file too large");
+		prError("FROM file too large");
 		close(filehandle);
 		return(0);
 	}
-	LoadData(filesize,filehandle);
+	loadData(filesize, filehandle);
 	return filesize;
 }
 
@@ -8640,7 +8651,7 @@ long filesize,startpos;
 	}
 	filehandle=open((char *)string3,O_BINARY|O_RDONLY);
 	if(filehandle==-1){
-		unableopenfile((char *)string3);
+		unableToOpenFile((char *) string3);
 		return(0);
 	}
 	nexttok();
@@ -8656,45 +8667,43 @@ long filesize,startpos;
 		return(0);
 	}
 	sizetoread=doconstlongmath();
-#ifdef _UNIX_
-	if((filesize=getfilelen(filehandle))==-1L){
-#else
-	if((filesize=filelength(filehandle))==-1L){
-#endif
-		preerror("Unable to determine EXTRACT file size");
+	boost::system::error_code ec;
+	filesize = fs::file_size((char *)string3, ec);
+	if (ec) {
+		prError("Unable to determine EXTRACT file size: " + ec.message());
 		close(filehandle);
 		return(0);
 	}
 	if(filesize<=startpos){
-		preerror("EXTRACT offset exceeds the length of the file");
+		prError("EXTRACT offset exceeds the length of the file");
 		close(filehandle);
 		return(0);
 	}
 	if(sizetoread==0)sizetoread=filesize-startpos;
 	if(am32==FALSE&&sizetoread>=0xFFFFL){
-		preerror("Block to EXTRACT exceeds 64K");
+		prError("Block to EXTRACT exceeds 64K");
 		close(filehandle);
 		return(0);
 	}
 	lseek(filehandle,startpos,0); 	// error checking required on this
-	LoadData(sizetoread,filehandle);
+	loadData(sizetoread, filehandle);
 	return sizetoread;
 }
 
-void LoadData(unsigned int size,int filehandle)
+void loadData(size_t size, int filehandle)
 {
 	if(splitdata){
 		while(((unsigned long)size+(unsigned long)outptrdata)>=outdatasize){
 			if(CheckDataSize()==0)break;
 		}
-		if((unsigned int)read(filehandle,outputdata+outptrdata,size)!=size)errorreadingfile((char *)string3);
+		if((unsigned int)read(filehandle,outputdata+outptrdata,size)!=size)errorReadingFile((char *) string3);
 		outptrdata+=size;
 	}
 	else{
 		while(((unsigned long)size+(unsigned long)outptr)>=outptrsize){
 			if(CheckCodeSize()==0)break;
 		}
-		if((unsigned int)read(filehandle,output+outptr,size)!=size)errorreadingfile((char *)string3);
+		if((unsigned int)read(filehandle,output+outptr,size)!=size)errorReadingFile((char *) string3);
 		outptr+=size;
 		outptrdata=outptr;
 	}
@@ -8782,9 +8791,9 @@ int rmm1;
 			(postbuf+posts)->type=(unsigned short)(am32==0?DIN_VAR:DIN_VAR32);
 //			printf("Add tok=%d %08X sib=%d %s\n",outtok->rec->rectok,outtok->rec->right,outtok->rec->recsib,outtok->rec->recid);
 			if(outtok->rec->rectok==tk_structvar&&outtok->rec->recsib==tp_gvar){
-				(postbuf+posts)->num=(int)outtok->rec;//02.09.05 17:10 ->right;
+				(postbuf+posts)->num=(uintptr_t)outtok->rec;//02.09.05 17:10 ->right;
 			}
-			else (postbuf+posts)->num=(int)outtok->rec;
+			else (postbuf+posts)->num=(uintptr_t)outtok->rec;
 		}
 //		else if((outtok->flag&f_dataseg))(postbuf+posts)->type=(unsigned short)(am32==0?DATABLOCK_VAR:DATABLOCK_VAR32);
 		else (postbuf+posts)->type=(unsigned short)(am32==0?POST_VAR:POST_VAR32);
@@ -8813,7 +8822,7 @@ int returnvalue;
 		sbufstr+=SIZEBUF;
 		bufstr=(char *)REALLOC(bufstr,sbufstr);
 	}
-	for(i=0;i<len;i++,poststrptr++)bufstr[poststrptr]=string[i];
+	for(i=0;i<len;i++,poststrptr++)bufstr[poststrptr]=String[i];
 	switch(term&3){
 		case zero_term:
 			if(term&s_unicod){
@@ -8856,7 +8865,7 @@ void *nextstr=liststring,*prevstr=NULL;
 		if(term==outs.type&&len<=outs.len){
 char *instr,*outstr;
 			outstr=(char *)nextstr+sizeof(STRING_LIST)+outs.len-1;
-			instr=(char *)string+len-1;
+			instr=(char *)String+len-1;
 char c;
 int i,j;
 			for(i=len,j=outs.len;i!=0;j--,i--,instr--,outstr--){
@@ -8883,7 +8892,7 @@ int i,j;
 	}
 	outs.next=(void *)MALLOC(sizeof(STRING_LIST)+len);
 	memcpy(outs.next,&ins,sizeof(STRING_LIST));
-	if(len!=0)memcpy((char *)outs.next+sizeof(STRING_LIST),&string,len);
+	if(len!=0)memcpy((char *)outs.next+sizeof(STRING_LIST),&String,len);
 	if(prevstr!=NULL)memcpy(prevstr,&outs,sizeof(STRING_LIST));
 	else liststring=outs.next;
 	return -1;
@@ -8908,7 +8917,7 @@ unsigned int addvalue,i;
 		if((outptr+poststrptr)>=outptrsize)CheckCodeSize();
 	}
 	datasize+=poststrptr;
-	if(dbg&2)AddDataNullLine(3);
+	if(dbg&2)addDataNullLine(3);
 	memcpy(&outputdata[outptrdata],bufstr,poststrptr);
 	outptrdata+=poststrptr;
 	if(!splitdata)outptr=outptrdata;
@@ -8941,7 +8950,7 @@ STRING_LIST ins;
 		}
 		nextstr=ins.next;
 	}
-	if(dbg&2)AddCodeNullLine();
+	if(dbg&2)addCodeNullLine();
 }
 
 void insertcode() 		// force code procedure at specified location
@@ -8961,25 +8970,25 @@ void insertcode() 		// force code procedure at specified location
 			itok.number=outptr;
 			updatecall((unsigned int)updatetree(),(unsigned int)itok.number,0);
 			if(tproc==tp_fastcall){
-				if(includeit(1)==-1)thisundefined(itok.name);
+				if(includeit(1)==-1)thisUndefined(itok.name);
 			}
-			else if(includeproc()==-1)thisundefined(itok.name);
+			else if(includeproc()==-1)thisUndefined(itok.name);
 			break;
 		case tk_id:
 		case tk_ID:
 			tok=tk_proc;
 			itok.number=outptr;
-			string[0]=0;
+			String[0]=0;
 			itok.type=tp_ucnovn;
-			addtotree(itok.name);
+			addToTree(itok.name);
 			if(tproc==tp_fastcall){
-				if(includeit(1)==-1)thisundefined(itok.name);
+				if(includeit(1)==-1)thisUndefined(itok.name);
 			}
-			else if(includeproc()==-1)thisundefined(itok.name);
+			else if(includeproc()==-1)thisUndefined(itok.name);
 			break;
 		case tk_proc:
 			if(itok.segm<NOT_DYNAMIC)insert_dynamic();
-			else preerror("Function already inserted in code");
+			else prError("Function already inserted in code");
 			break;
 		default: idalreadydefined(); break;
 	}
@@ -9014,8 +9023,8 @@ SAVEPAR *par;
 	oinptr=inptr2;
 	ocha=cha2;
 	oline=linenum2;
-	ofile=currentfileinfo;
-	(startfileinfo+currentfileinfo)->stlist=staticlist;
+	ofile=CurrentFileInfoNum;
+	FilesInfo[CurrentFileInfoNum].stlist = staticlist;
 	oendinptr=endinptr;
 	endoffile=0;
 	ostartline=startline;
@@ -9023,13 +9032,13 @@ SAVEPAR *par;
 	pinfo=ptr->pinfo;
 	input=(unsigned char *)pinfo->buf;
 	inptr2=1;
-	startline=input;
+	startline = (char *) input;
 	cha2=input[0];
 	endinptr=strlen((char *)input);
 	endinput=startline+endinptr;
 	linenumber=linenum2=ptr->line;
-	currentfileinfo=ptr->file;
-	staticlist=(startfileinfo+currentfileinfo)->stlist;
+	CurrentFileInfoNum=ptr->file;
+	staticlist = FilesInfo[CurrentFileInfoNum].stlist;
 	par=SRparam(TRUE,NULL);
 	warning=pinfo->warn;
 	optimizespeed=pinfo->speed;
@@ -9063,9 +9072,9 @@ SAVEPAR *par;
 //				else sprintf(m1,"%s()",itok.name);
 				sprintf(m1,"%s()",itok.name);
 
-				AddCodeNullLine(m1);
+				addCodeNullLine(m1);
 			}
-			else AddLine();
+			else addLine();
 		}
 		if(AlignProc)AlignCD(CS,alignproc);
 //		puts((char *)input);
@@ -9079,9 +9088,9 @@ SAVEPAR *par;
 	cha2=ocha;
 	linenum2=oline;
 //	printf("cur_mod=%08X\n",cur_mod);
-	(startfileinfo+currentfileinfo)->stlist=staticlist;
-	currentfileinfo=ofile;
-	staticlist=(startfileinfo+currentfileinfo)->stlist;
+	FilesInfo[CurrentFileInfoNum].stlist = staticlist;
+	CurrentFileInfoNum=ofile;
+	staticlist = FilesInfo[CurrentFileInfoNum].stlist;
 	endinptr=oendinptr;
 	endoffile=0;
 	startline=ostartline;
@@ -9092,7 +9101,7 @@ SAVEPAR *par;
 //	printf("tok=%d %08X\n",tok,cur_mod);
 }
 
-idrec *addtotree(char *keystring)//добавить строку в дерево
+idrec *addToTree(const char *Keystring)//добавить строку в дерево
 {
 struct idrec *ptr,*newptr;
 int cmpresult;
@@ -9101,13 +9110,13 @@ int cmpresult;
 	ptr=(itok.flag&f_static)!=0?staticlist:treestart;	//начало дерева
 	if(ptr==NULL)((itok.flag&f_static)!=0?staticlist:treestart)=newptr;//начало дерева
 	else{	//поиск строки в дереве
-		while(((cmpresult=strcmp(ptr->recid,keystring))<0&&ptr->left!=NULL)||
+		while(((cmpresult=strcmp(ptr->recid,Keystring))<0&&ptr->left!=NULL)||
        (cmpresult>0&&ptr->right!=NULL))ptr=(cmpresult<0?ptr->left:ptr->right);
 		(cmpresult<0?ptr->left:ptr->right)=newptr;
 	}
-	strcpy(newptr->recid,keystring);//скопир название
+	strcpy(newptr->recid,Keystring);//скопир название
 	newptr->newid=NULL;
-	if(string[0]!=0)newptr->newid=BackString((char *)string);
+	if (String[0] != 0)newptr->newid = strdup((char *) String);
 	newptr->rectok=tok;
 	newptr->recnumber=itok.number;
 	newptr->recsegm=itok.segm;
@@ -9119,7 +9128,7 @@ int cmpresult;
 	newptr->sbuf=NULL;
 	newptr->recsib=itok.sib;
 	newptr->line=linenumber;
-	newptr->file=currentfileinfo;
+	newptr->file=CurrentFileInfoNum;
 	newptr->count=0;
 	newptr->type=itok.type;
 	newptr->npointr=itok.npointr;
@@ -9132,10 +9141,11 @@ long updatetree()			 // returns the old number value
 struct idrec *ptr;
 long hold;
 	ptr=itok.rec;
-	if(ptr==0)internalerror("address record not found when update tree");
+	if(ptr==0)internalError("address record not found when update tree");
 	if(ptr->newid)free(ptr->newid);
 	ptr->newid=NULL;
-	if(string[0]!=0)ptr->newid=BackString((char *)string);
+	if (String[0] != 0)
+		ptr->newid = strdup((char *) String);
 	ptr->rectok=tok;
 	hold=ptr->recnumber;
 	ptr->recnumber=itok.number;
@@ -9167,7 +9177,7 @@ treelocalrec *ntlr=tlr;
 	return(retvalue);
 }
 
-localrec * addlocalvar(char *str,int tok4,unsigned int num,int addmain)
+localrec * addlocalvar(const char *Str, int tok4, unsigned int num, int addmain)
 {
 localrec *ptr,*newptr;
 localrec *uptr;
@@ -9189,7 +9199,7 @@ treelocalrec *ntlr;
 		while(ptr->rec.next!=NULL)ptr=ptr->rec.next;
 		ptr->rec.next=newptr;
 	}
-	strcpy(newptr->rec.recid,str);
+	strcpy(newptr->rec.recid,Str);
 	newptr->rec.rectok=tok4;
 	newptr->rec.recnumber=num;
 	newptr->rec.next=NULL;
@@ -9259,7 +9269,7 @@ struct localrec *ptr, *ptr1;
 			if(ptr->rec.rectok==tk_locallabel){  /* check for unresolved labels */
 char holdstr[32+IDLENGTH];
 				sprintf(holdstr,"local jump label '%s' unresolved",ptr1->rec.recid);
-				preerror(holdstr);
+				prError(holdstr);
 			}
 //			printf("type=%d post=%08X %s\n",ptr->rec.type,ptr->rec.recpost,ptr->rec.recid);
 			if(ptr->rec.rectok==tk_structvar){
@@ -9287,53 +9297,54 @@ char holdstr[32+IDLENGTH];
 }
 
 /* ================ input procedures start ================= */
-int loadinputfile(char *inpfile)	//считывание файла в память
+int loadInputFile(const fs::path &InputFile)	//считывание файла в память
 {
-unsigned long size;
+	size_t size;
 int filehandle;
-	if((filehandle=open(inpfile,O_BINARY|O_RDONLY))==-1)return -2;
-#ifdef _UNIX_
-	if((size=getfilelen(filehandle))==0){
-#else
-	if((size=filelength(filehandle))==0){
-#endif
-		badinfile(inpfile);
+	if ((filehandle = open(InputFile.c_str(), O_BINARY | O_RDONLY)) == -1)
+		return -2;
+	boost::system::error_code ec;
+	size = fs::file_size(InputFile, ec);
+	if (size == 0 || ec) {
+		badInputFile(InputFile);
 		close(filehandle);
 		return(-1);
 	}
 	if(totalmodule==0){
-		startfileinfo=(struct FILEINFO *)MALLOC(sizeof(FILEINFO));
+		FILEINFO FI(InputFile, 0, nullptr);
+		FilesInfo.emplace_back(FI);
 		totalmodule=1;
-		currentfileinfo=0;
+		CurrentFileInfoNum=0;
 	}
 	else{	//поиск емени файла в списке обработанных
-		for(currentfileinfo=0;currentfileinfo<totalmodule;currentfileinfo++){
-			if(stricmp(inpfile,(startfileinfo+currentfileinfo)->filename)==0)break;
+		for(CurrentFileInfoNum=0;CurrentFileInfoNum<totalmodule;CurrentFileInfoNum++){
+			if (boost::iequals(InputFile.string(), FilesInfo[CurrentFileInfoNum].Filename.string()))
+				break;
 		}
-		if(currentfileinfo!=totalmodule){
-			if(crif!=FALSE)return 1;
+		if(CurrentFileInfoNum!=totalmodule){
+			if(opt_cri!=FALSE)return 1;
 			goto cont_load;
 		}
 		totalmodule++;
-		startfileinfo=(struct FILEINFO *)REALLOC(startfileinfo,sizeof(FILEINFO)*(totalmodule));
+		FILEINFO FI(InputFile, 0, nullptr);
+		FilesInfo.emplace_back(FI);
 	}
-	(startfileinfo+currentfileinfo)->stlist=NULL;
-	(startfileinfo+currentfileinfo)->filename=(char *)MALLOC(strlen(inpfile)+1);
-	strcpy((startfileinfo+currentfileinfo)->filename,inpfile);
-	(startfileinfo+currentfileinfo)->numdline=0;
-#if !defined(__WIN32__)
-	GetFileTime(filehandle,&(startfileinfo+currentfileinfo)->time);
+	FilesInfo[CurrentFileInfoNum].stlist = nullptr;
+	FilesInfo[CurrentFileInfoNum].Filename=InputFile;
+	FilesInfo[CurrentFileInfoNum].numdline = 0;
+#if !defined(_WIN32)
+	GetFileTime(filehandle, &FilesInfo[CurrentFileInfoNum].time);
 #else
-	getftime(filehandle,&(startfileinfo+currentfileinfo)->time);
+	getftime(filehandle, &StartFileInfo[CurrentFileInfoNum].time);
 #endif
 cont_load:
-	staticlist=(startfileinfo+currentfileinfo)->stlist;
+	staticlist = FilesInfo[CurrentFileInfoNum].stlist;
 	input=(unsigned char *)MALLOC(size+1);
 
 //	printf("%08lX %s %lu\n",input,inpfile,size);
 
 	if((endinptr=read(filehandle,input,size))!=size){
-		errorreadingfile(inpfile);
+		errorReadingFile(InputFile);
 		close(filehandle);
 		return(-1);
 	}
@@ -9521,7 +9532,7 @@ unsigned int pos,dist;
 			else{
 				dist-=(am32==0?2:4);
 //				if(dist){
-					if(dist<128/*&&i>=j*/)warningjmp(mesRETURN,(listreturn+i)->line,currentfileinfo);
+					if(dist<128/*&&i>=j*/)warningJmp(mesRETURN, (listreturn + i)->line, CurrentFileInfoNum);
 					if(am32)*(unsigned long *)&output[pos]=dist;
 					else*(unsigned short *)&output[pos]=(unsigned short)dist;
 /*				}
@@ -9599,14 +9610,14 @@ void doreturn(int typer) 	 /* do return(...); */
 {
 char sign=0;
 int line=linenumber;
-char *ofsstr=NULL;
+	std::string ofsstr;
 int i;
 unsigned int oaddESP=addESP;
 	if(tok2==tk_openbracket)nexttok();
-	if((ofsstr=GetLecsem(tk_closebracket,tk_semicolon))){
+	if (!(ofsstr = getLexem(tk_closebracket, tk_semicolon)).empty()) {
 		int retreg;
 		int razr=getrazr(returntype);
-		if((retreg=CheckIDZReg(ofsstr,AX,razr))!=NOINREG){
+		if ((retreg = checkIDZReg(ofsstr, AX, razr)) != NOINREG) {
 			GetEndLex(tk_closebracket,tk_semicolon);
 			if(razr==r16)tok=tk_reg;
 			else if(razr==r32)tok=tk_reg32;
@@ -9620,11 +9631,17 @@ unsigned int oaddESP=addESP;
 nn1:
 		switch(returntype){
 			case tk_int: sign=1;
-			case tk_word: do_e_axmath(sign,r16,&ofsstr); break;
+			case tk_word:
+				do_e_axmath(sign, r16, ofsstr);
+				break;
 			case tk_char: sign=1;
-			case tk_byte: doalmath(sign,&ofsstr); break;
+			case tk_byte:
+				doalmath(sign, ofsstr);
+				break;
 			case tk_long: sign=1;
-			case tk_dword: do_e_axmath(sign,r32,&ofsstr); break;
+			case tk_dword:
+				do_e_axmath(sign, r32, ofsstr);
+				break;
 			case tk_qword:
 				getintoreg64(EAX|(EDX*256));
 				if(itok.type!=tp_stopper&&tok!=tk_eof&&itok.type!=tp_compare)doregmath64(EAX|(EDX*256));
@@ -9641,7 +9658,7 @@ nn1:
 				if(itok2.type==tp_stopper&&(tok==tk_floatvar||tok==tk_number)){
 					if(tok==tk_floatvar){
 						tok=tk_dwordvar;
-						do_e_axmath(0,r32,&ofsstr);
+						do_e_axmath(0, r32, ofsstr);
 					}
 					else doeaxfloatmath(tk_reg32,0,0);
 				}
@@ -9657,7 +9674,6 @@ nn1:
 	}
 	if(tok==tk_closebracket)nexttok();
 	seminext();
-	if(ofsstr)free(ofsstr);
 	clearregstat();
 #ifdef OPTVARCONST
 	ClearLVIC();
@@ -9727,14 +9743,14 @@ DLLLIST *FindDLL()
 {
 DLLLIST *newdll;
 	if(listdll!=NULL){	//список DLL не пуст
-		for(newdll=listdll;stricmp(newdll->name,(char *)string)!=0;newdll=newdll->next){
+		for (newdll = listdll; boost::iequals(newdll->name, (char *) String); newdll = newdll->next) {
 			if(newdll->next==NULL){	//последняя в списке
 				newdll->next=(DLLLIST *)MALLOC(sizeof(DLLLIST));//создать новую
 				newdll=newdll->next;
 				newdll->next=NULL;
 				newdll->num=0;
 				newdll->list=NULL;
-				strcpy(newdll->name,(char *)string);
+				strcpy(newdll->name,(char *)String);
 				break;
 			}
 		}
@@ -9744,7 +9760,7 @@ DLLLIST *newdll;
 		newdll->next=NULL;
 		newdll->num=0;
 		newdll->list=NULL;
-		strcpy(newdll->name,(char *)string);
+		strcpy(newdll->name,(char *)String);
 	}
 	return newdll;
 }
@@ -9766,7 +9782,7 @@ int next;
 			else if(tok==tk_struct)InitStruct();
 			else{
 				next=TRUE;
-				if(testInitVar(FALSE)!=FALSE)preerror("Error declare WINAPI");
+				if(testInitVar(FALSE)!=FALSE)prError("Error declare WINAPI");
 				if(itok.rm==tokens)itok.rm=tk_dword;
 				if(itok.npointr)itok.rm=(am32==TRUE?tk_dword:tk_word);
 				ITOK hitok=itok;
@@ -9798,11 +9814,11 @@ int next;
 					itok.number=secondcallnum++;
 					itok.segm=NOT_DYNAMIC;
 					itok.post=dEBX|dEDI|dESI;	//05.09.04 01:36
-					strcpy((char *)string,param);
+					strcpy((char *)String,param);
 					itok.type=tp_ucnovn;
 					if(newdll->num==0)listapi=(APIPROC *)MALLOC(sizeof(APIPROC));	//первая в списке
 					else listapi=(APIPROC *)REALLOC(listapi,sizeof(APIPROC)*(newdll->num+1));
-					(listapi+newdll->num)->recapi=addtotree(itok.name);
+					(listapi+newdll->num)->recapi= addToTree(itok.name);
 					if(tok2==tk_openbracket){
 						next=0;
 						nexttok();
@@ -9844,9 +9860,10 @@ int next;
 				else if(j==TRUE)globalvar();
 				break;
 			case tk_struct: InitStruct(); break;
-			default: preerror("Error declare extern");
+			default:
+				prError("Error declare extern");
 		}
-		if((!fobj)&&(!sobj))preerror("extern using only for compilation obj files");
+		if((!fobj)&&(!sobj))prError("extern using only for compilation obj files");
 	}
 }
 
@@ -9960,7 +9977,7 @@ classdecl:
 			(tok2==tk_openbracket||tok2==tk_at||tok2==tk_period))return FALSE;
 	if(tok2==tk_openbracket)return CheckDeclareProc();
 	if(rettype==tokens){
-		thisundefined(itok.name);//02.09.04 20:55 was unuseableinput();
+		thisUndefined(itok.name);//02.09.04 20:55 was unuseableinput();
 		return 2;
 	}
 	return TRUE;
@@ -9999,7 +10016,7 @@ idrec *newrec,*ptr;
 		else if(ssize==4&&postsize%4!=0)postsize+=4-(postsize%4);
 	}
 	bazael=tteg->baza;
-	string[0]=0;
+	String[0]=0;
 	for(i=0;i<tteg->numoper;i++){
 //		printf("tok=%d %s\n",(bazael+i)->tok,(bazael+i)->name);
 		switch((bazael+i)->tok){
@@ -10023,7 +10040,7 @@ idrec *newrec,*ptr;
 				itok.size=(bazael+i)->numel*ssize;
 				itok.rm=(am32==FALSE?rm_d16:rm_d32);
 				itok.npointr=0;
-				newrec=addtotree((bazael+i)->name);
+				newrec= addToTree((bazael + i)->name);
 				newrec->count=count;
 				break;
 			case tk_struct:
@@ -10047,7 +10064,7 @@ idrec *newrec,*ptr;
 				newrec->rectok=tk_structvar;
 				newrec->flag=tteg->flag|newteg->flag;
 				newrec->line=linenumber;
-				newrec->file=currentfileinfo;
+				newrec->file=CurrentFileInfoNum;
 				if(FixUp)newrec->flag|=f_reloc;
 				newrec->recrm=(bazael+i)->numel;
 				newrec->recsize=(bazael+i)->numel*newteg->size;
@@ -10071,7 +10088,7 @@ structteg *newteg;
 //idrec *newrec,*trec;
 localrec *lrec;
 	bazael=tteg->baza;
-	string[0]=0;
+	String[0]=0;
 	for(i=0;i<tteg->numoper;i++){
 		switch((bazael+i)->tok){
 			case tk_floatvar:
@@ -10140,14 +10157,7 @@ int noname=FALSE;
 	return 0;
 }
 
-char *BackString(char *str)
-{
-	char *retbuf=(char *)MALLOC(strlen(str)+1);
-	strcpy(retbuf,str);
-	return retbuf;
-}
-
-#if !defined(__WIN32__)
+#if !defined(_WIN32)
 void GetFileTime(int fd,struct ftime *buf)
 {
 struct stat sb;
@@ -10259,7 +10269,7 @@ void startblock()
 treelocalrec *nrec;
 	numblocks++;
 //	printf("start block %d\n",numblocks);
-	nrec=(treelocalrec *)MALLOC(sizeof treelocalrec);
+	nrec = (struct treelocalrec *) MALLOC(sizeof(struct treelocalrec));
 	nrec->level=numblocks;
 	nrec->lrec=NULL;
 	nrec->addesp=addESP;

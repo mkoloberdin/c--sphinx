@@ -2,6 +2,8 @@
 
 #include "tok.h"
 
+#include <boost/algorithm/string.hpp>
+
 char useasm=FALSE;
 char asmparam=FALSE;
 #include "asmnemon.h"
@@ -80,6 +82,7 @@ unsigned int i=0;
 int razr=r16;
 unsigned long hnumber;
 int faradd=0;
+	std::string UString = std::string((char *) String);
 	if(nexta==FALSE){
 		useasm=TRUE;
 		nexttok();
@@ -95,8 +98,8 @@ int faradd=0;
 			else doid((char)(tok==tk_ID?1:0),tk_void);
 			return;
 		}
-		strupr((char *)string);
-		htok=FastSearch((unsigned char *)asmMnem,ofsmnem,0,(char *)string);
+		UString = boost::algorithm::to_upper_copy(std::string((char *) String));
+		htok = fastSearch((unsigned char *) asmMnem, ofsmnem, 0, (const uint8_t *) UString.c_str());
 sw_asm:
 		asmparam=TRUE;
 		switch(htok){
@@ -224,7 +227,7 @@ sw_asm:
 					op(0x0F);
 					op(0xC8+(unsigned int)itok.number);
 				}
-				else preerror("Expecting 32 bit Register for BSWAP");
+				else prError("Expecting 32 bit Register for BSWAP");
 				possiblecpu=4;
 				break;
 			case a_bsf:	//BSF
@@ -235,12 +238,12 @@ sw_asm:
 				nexttok();
 				htok=0;
 				if(tok==tk_ID||tok==tk_id){
-					if(stricmp("FAR",(char *)string)==0){
+					if(UString == "FAR"s){
 						nexttok();
 						faradd=8;
 						htok=1;
 					}
-					else if(stricmp("NEAR",(char *)string)==0){
+					else if(UString == "NEAR"s){
 						nexttok();
 						htok=1;
 					}
@@ -340,7 +343,7 @@ callreg:
 						outaddress(&itok);
 						break;
 					default:
-						preerror("Invalid item for CALL");
+						prError("Invalid item for CALL");
 						break;
 				}
 #ifdef OPTVARCONST
@@ -554,7 +557,7 @@ noint:
 					CheckIP();
 					if(tok==tk_number){
 						hnumber=doconstdwordmath();
-						if(tok==tk_id&&strcmp((char *)string,"dup")==0){
+						if (tok == tk_id && UString == "dup"s) {
 							i=hnumber;
 							nexttok();
 							CheckMinusNum();
@@ -564,7 +567,8 @@ noint:
 						for(;i!=0;i--)op(hnumber);
 					}
 					else if(tok==tk_string){
-						for(i=0;i<(unsigned int)itok.number;i++)opd(string[i]);
+						for (i = 0; i < (unsigned int) itok.number; i++)
+							opd(UString[i]);
 						switch(itok.flag&3){
 							case zero_term:
 								if(itok.flag&s_unicod)opd(0);
@@ -944,12 +948,12 @@ invlgp:
 				nexttok();
 				faradd=0;
 				lastcommand=tk_goto;
-				if(stricmp("FAR",itok.name)==0){
+				if (boost::iequals("FAR"s, itok.name)) {
 					nexttok();
 					faradd=8;
-				}
-				else if(stricmp("NEAR",itok.name)==0)nexttok();
-				else if(stricmp("SHORT",itok.name)==0){	 // case insensitive
+				} else if (boost::iequals("NEAR"s, itok.name))
+					nexttok();
+				else if (boost::iequals("SHORT"s, itok.name)) {     // case insensitive
 					nexttok();
 					next=(unsigned char)GOTO();
 					break;
@@ -1156,7 +1160,7 @@ pop:
 								break;
 							}
 						default:
-							preerror("Invalid operand for POP");
+							prError("Invalid operand for POP");
 							break;
 					}
 					if(cpu<possiblecpu)cpu=possiblecpu;
@@ -1197,7 +1201,7 @@ POPFD:
 				do{
 					asmparam=TRUE;
 					nexttok();
-					if((razr=Push())==FALSE)preerror("Invalid operand for PUSH");
+					if((razr=Push())==FALSE)prError("Invalid operand for PUSH");
 					asmparam=FALSE;
 					addESP+=razr==r16?2:4;
 				}while(tok==tk_camma);
@@ -1992,7 +1996,7 @@ nointx:
 						break;
 					case tk_reg:
 						if(itok.number==0)outword(0xe0df);
-						else preerror("Use only AX");
+						else prError("Use only AX");
 						ClearReg(AX);
 						break;
 					default: wordvalexpected();
@@ -2723,7 +2727,7 @@ nointx:
 
 			case -1: codeexpected(); break;
 			default:
-				preerror("sorry, this instruction is not supported");
+				prError("sorry, this instruction is not supported");
 				break;
 		}
 		asmparam=FALSE;
@@ -3299,7 +3303,7 @@ jmpreg:
 			break;
 		default:
 err:
-			preerror("Invalid item for JMP");
+	prError("Invalid item for JMP");
 			break;
 	}
 	return next;
@@ -3595,15 +3599,13 @@ unsigned int address;
 	ClearLVIC();
 #endif
 	nexttok();
-	if(stricmp("FAR",itok.name)==0){ 	 // case insensitive
-		preerror("FAR jump not available for this instruction");
+	if (boost::iequals("FAR"s, itok.name)) {     // case insensitive
+		prError("FAR jump not available for this instruction");
 		nexttok();
-	}
-	else if(stricmp("NEAR",itok.name)==0){  // case insensitive
+	} else if (boost::iequals("NEAR"s, itok.name)) {  // case insensitive
 		shortjump=0;
 		nexttok();
-	}
-	else if(stricmp("SHORT",itok.name)==0)nexttok();  // case insensitive
+	} else if (boost::iequals("SHORT"s, itok.name))nexttok();  // case insensitive
 	if(shortjump){
 		CheckIP();
 		switch(tok){
@@ -3696,11 +3698,12 @@ unsigned long numlong;
 				op(nearcode); outword(0x0000);  /* JXX NEAR */
 				if(am32!=FALSE)outword(0x0000);
 				break;
-			default: preerror("Invalid operand for NEAR jump"); break;
+			default:
+				prError("Invalid operand for NEAR jump"); break;
 		}
 		if(cpu<3)cpu=3;
 	}
-	else preerror("NEAR jump not available for this instruction");
+	else prError("NEAR jump not available for this instruction");
 	if(next)nexttok();
 }
 
@@ -4780,7 +4783,7 @@ void FpuType4(unsigned int opcode,unsigned int addrm)
 			CheckAllMassiv(bufrm,2,&strinf);
 			KillVar(itok.name);
 			outseg(&itok,2);
-			op(0xDE+opcode);
+			op(0xDE + opcode);
 			op(itok.rm+addrm);
 			outaddress(&itok);
 			break;
@@ -5137,20 +5140,20 @@ void Leave()
 void  tobedefined(int callkind,int expectedreturn)
 {
 //	strcpy(itok.name,(char *)string);
-	string[0]=0;
+	String[0]=0;
 	itok.flag=(unsigned char)(tok==tk_ID?tp_fastcall:(comfile==file_w32?tp_stdcall:tp_pascal));
 	tok=tk_undefproc;
 	itok.number=secondcallnum;
 	itok.segm=NOT_DYNAMIC;
 	itok.rm=expectedreturn;
 	itok.post=0;
-	addtotree(itok.name);
+    addToTree(itok.name);
 	addacall(secondcallnum++,(unsigned char)callkind);
 }
 
 void  addlocaljump(int callkind)
 {
-	addlocalvar((char *)string,tk_locallabel,secondcallnum,TRUE);
+	addlocalvar((char *)String,tk_locallabel,secondcallnum,TRUE);
 	addacall(secondcallnum++,(char)callkind);
 }
 
@@ -5964,7 +5967,7 @@ void DDDW(int faradd)
 int htok,i;
 char name[IDLENGTH];
 unsigned long hnumber;
-	if(dbg&2)AddDataNullLine(faradd==0?2:4);
+	if(dbg&2)addDataNullLine(faradd == 0 ? 2 : 4);
 	dbgact++;
 	asmparam=FALSE;
 	do{
@@ -5978,7 +5981,7 @@ unsigned long hnumber;
 				strcpy(name,itok.name);
 			case tk_number:
 				hnumber=doconstdwordmath();
-				if(tok==tk_id&&strcmp((char *)string,"dup")==0){
+				if(tok==tk_id&&strcmp((char *)String,"dup")==0){
 					i=hnumber;
 					nexttok();
 					CheckMinusNum();
@@ -6034,8 +6037,10 @@ int next=1;
 	switch(tok){
 		case tk_id:
 		case tk_ID:
-			if((stricmp("dword",(char *)string)==0)||(stricmp("long",(char *)string)==0))i=r32;
-			else if((stricmp("word",(char *)string)==0)||(stricmp("int",(char *)string)==0))i=r16;
+			if ((boost::iequals("dword"s, (char *) String)) || (boost::iequals("long"s, (char *) String)))
+				i = r32;
+			else if ((boost::iequals("word"s, (char *) String)) || (boost::iequals("int"s, (char *) String)))
+				i = r16;
 			else return FALSE;
 			goto swpushpar;
 		case tk_dword:

@@ -1,11 +1,15 @@
 #define _ERRORS_
 #include "tok.h"
 
+#include <string>
+using namespace std::string_literals;
+#include <boost/algorithm/string.hpp>
+
 void warningprint(char *str,int line,int file);
 WARNACT wact[WARNCOUNT]={
-	warningprint,1,warningprint,1,warningprint,1,warningprint,1,warningprint,1,
-	warningprint,1,warningprint,1,warningprint,1,warningprint,1,warningprint,1,
-	warningprint,1,warningprint,1,warningprint,1,warningprint,1,warningprint,1};
+	warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,
+	warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,
+	warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1};
 
 int	maxerrors = 16; 				// number of errors to stop at
 
@@ -43,37 +47,38 @@ void FindEndLex()
 	while(tok2!=tk_semicolon&&tok!=tk_eof)nexttok();
 }
 
-void  preerror(char *str) /* error on currentline with line number and file name */
+void prError(const std::string &Str) /* error on currentline with line number and file name */
 {
-	preerror3(str,linenumber);
+	prError3(Str, linenumber);
 }
 
-void  preerror3(char *str,unsigned int line,unsigned int file)//error message at a different than current line
+void prError3(const std::string &Str, unsigned int line, unsigned int file)//error message at a different than current line
 {
 	if(error<maxerrors){
 		error++;
-		sprintf((char *)string3,"%s(%d)#%d> %s.\n",startfileinfo==NULL?"":(startfileinfo+file)->filename,line,error,str);
+		sprintf((char *) string3, "%s(%d)#%d> %s.\n", FilesInfo.empty() ? "" : FilesInfo[file].Filename.c_str(),
+				line, error, Str.c_str());
 		printf((char *)string3);
-		if(errfile.file==NULL)errfile.file=fopen(errfile.name,"w+t");
+		if(errfile.file==NULL)errfile.file=fopen(errfile.Name.c_str(),"w+t");
 		if(errfile.file!=NULL)fprintf(errfile.file,(char *)string3);
 	}
 	else exit(e_toomanyerrors);
 }
 
-void internalerror (char *str)// serious internal compiler error message
+void internalError(const char *Str)// serious internal compiler error message
 {
 char buf[200];
-	sprintf(buf,"*** SERIOUS COMPILER INTERNAL ERROR ***\n>%s",str);
-	preerror(buf);
-	printf("STRING:%s\nIDNAME:%s\n",string,itok.name);
+	sprintf(buf,"*** SERIOUS COMPILER INTERNAL ERROR ***\n>%s",Str);
+	prError(buf);
+	printf("STRING:%s\nIDNAME:%s\n",String,itok.name);
 	printf("TOK:%d SEGM:%d POST:%d RM:%d number:%ld\n",tok,itok.segm,itok.post,itok.rm,itok.number);
-	printf("STRING2:%s\nIDNAME2:%s\n",string2,itok2.name);
+	printf("STRING2:%s\nIDNAME2:%s\n",String2,itok2.name);
 	printf("TOK2:%d SEGM2:%d POST2:%d RM2:%d number2:%ld\n",tok2,itok2.segm,itok2.post,itok2.rm,itok2.number);
 	printf("Out position:%04X\n",outptr);
 	exit(e_internalerror);
 }
 
-char *getnumoperand(int type,char *name)
+const char * getnumoperand(int type, const char *Name)
 {
 	switch(type){
 		case 0:
@@ -91,7 +96,7 @@ char *getnumoperand(int type,char *name)
 			sprintf(buferr,"%d-th ",type%256);
 			break;
 	}
-	strcat(buferr,name);
+	strcat(buferr,Name);
 	return buferr;
 }
 
@@ -99,120 +104,114 @@ void  expected (char ch)
 {
 char holdstr[80];
 	sprintf(holdstr,"'%c' expected",ch);
-	preerror(holdstr);
+	prError(holdstr);
 }
 
 void numexpected(int type)
 {
 char buf[40];
 	sprintf(buf,"%snumber expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void varexpected(int type)
 {
 char buf[45];
 	sprintf(buf,"%svariable expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void stringexpected()
 {
-	preerror("string expected");
+	prError("string expected");
 }
 
 void valueexpected()
 {
-	preerror("value expected");
+	prError("value expected");
 }
 
 void wordvalexpected()
 {
-	preerror("word value expected");
+	prError("word value expected");
 }
 
 void dwordvalexpected()
 {
-	preerror("dword value expected");
+	prError("dword value expected");
 }
 
 void qwordvalexpected()
 {
-	preerror("qword value expected");
+	prError("qword value expected");
 }
 
 void codeexpected()
 {
-	preerror("assembly opcode expected");
+	prError("assembly opcode expected");
 }
 
 void operatorexpected()
 {
-	preerror("operator identifier expected");
+	prError("operator identifier expected");
 }
 
 void unexpectedeof()
 {
-	preerror("unexpected END OF FILE");
+	prError("unexpected END OF FILE");
 }
 
 void swaperror()
 {
-	preerror("invalid or incompatable swap item");
+	prError("invalid or incompatable swap item");
 }
 
 void notexternfun()
 {
-	preerror("Do not insert extern function");
+	prError("Do not insert extern function");
 }
 
 void idalreadydefined()
 {
 char holdstr[80];
 	sprintf(holdstr,"identifier '%s' already defined",itok.name);
-	preerror(holdstr);
+	prError(holdstr);
 	FindStopTok();
 //	nexttok();
 }
 
-void  jumperror(unsigned int line,char *type)
+void jumperror(unsigned int Line, const char *Type)
 {
-char smalltype[IDLENGTH];
-char buf[80];
-	strcpy(smalltype,type);
-	strlwr(smalltype);
-	sprintf(buf,"'%s' jump distance too large, use '%s'",type,smalltype);
-	preerror3(buf,line);
+	std::string SmallType = boost::algorithm::to_lower_copy(std::string(Type));
+	prError3("'"s + Type + "' jump distance too large, use '"s + SmallType + "'"s, Line);
 }
 
 void unknowncompop()
 {
-	preerror("unknown comparison operator");
+	prError("unknown comparison operator");
 }
 
 void maxoutputerror()
 {
-	preerror("maximum output code size exceeded");
+	prError("maximum output code size exceeded");
 	exit( e_outputtoobig );
 }
 
-void unableopenfile(char *name)
+void unableToOpenFile(const fs::path &Filename)
 {
-char holdstr[256];
-	sprintf(holdstr,"unable to open file '%s'",name);
-	preerror(holdstr);
+	prError("unable to open file '"s + Filename.string() + "'"s);
 }
 
 void shortjumptoolarge()
 {
-	preerror(shorterr);
+	prError(shorterr);
 }
 
-void thisundefined(char *str,int next)
+void thisUndefined(const char *Str, int next)
 {
 char holdstr[80];
-	sprintf(holdstr,"'%s' undefined",str);
-	preerror(holdstr);
+	sprintf(holdstr,"'%s' undefined",Str);
+	prError(holdstr);
 
 	if(next)FindStopTok();
 }
@@ -221,55 +220,51 @@ void datatype_expected(int type)
 {
 char buf[45];
 	sprintf(buf,"%smemory variable expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 	FindStopTok();
 }
 
 void illegalfloat()
 {
-	preerror("illegal use of float point");
+	prError("illegal use of float point");
 }
 
 void tobigpost()
 {
-	preerror("maximum size of post variables exceeded");
+	prError("maximum size of post variables exceeded");
 	postsize=0xFFFF;
 }
 
 void unuseableinput()
 {
-	preerror("unuseable input");
+	prError("unuseable input");
 	FindStopTok();
 }
 
 void ManyLogicCompare()
 {
-	preerror("to many use logic compare");
+	prError("to many use logic compare");
 }
 
 void ZeroMassiv()
 {
-	preerror("size massiv unknown or zero");
+	prError("size massiv unknown or zero");
 }
 
 void maxdataerror()
 {
-	preerror("maximum output data size exceeded");
+	prError("maximum output data size exceeded");
 	exit( e_outputtoobig );
 }
 
-void errorreadingfile(char *name)
+void errorReadingFile(const fs::path &Filename)
 {
-char buf[256];
-	sprintf(buf,"error reading from file '%s'",name);
-	preerror(buf);
+	prError("error reading from file '"s + Filename.string() + "'"s);
 }
 
-void badinfile(char *name)
+void badInputFile(const fs::path &Filename)
 {
-char buf[256];
-	sprintf(buf,"bad input file '%s'",name);
-	preerror(buf);
+	prError("bad input file '"s + Filename.string() + "'"s);
 }
 
 void edpip(int num)
@@ -277,56 +272,56 @@ void edpip(int num)
 char buf[64];
 //	preerror("error declare parameters in function");
 	sprintf(buf,"error declare %sparameters in function",getnumoperand(num,""));
-	preerror(buf);
+	prError(buf);
 }
 
 void CompareOr()
 {
-	preerror("compare logic OR or AND to big distance");
+	prError("compare logic OR or AND to big distance");
 }
 
 void dynamiclabelerror()
 {
-	preerror("global labels illegal within dynamic functions");
+	prError("global labels illegal within dynamic functions");
 }
 
 void OnlyComFile()
 {
-	preerror("this option only for COM output files");
+	prError("this option only for COM output files");
 }
 
 void redeclare(char *name)
 {
 char buf[120];
 	sprintf(buf,"error redeclare function \"%s\"",name);
-	preerror(buf);
+	prError(buf);
 }
 
 void retvoid()
 {
-	preerror("function has return type of void");
+	prError("function has return type of void");
 }
 
-void extraparam(char *name)
+void extraparam(const char *Name)
 {
 char buf[120];
-	sprintf(buf,"extra parameter in function %s",name);
-	preerror(buf);
+	sprintf(buf,"extra parameter in function %s",Name);
+	prError(buf);
 }
 
 void blockerror()
 {
-	preerror("illegal syntax within [ ]");
+	prError("illegal syntax within [ ]");
 }
 
 void block16_32error()
 {
-	preerror("only one of 16 or 32 bit allowed within [ ]");
+	prError("only one of 16 or 32 bit allowed within [ ]");
 }
 
 void notstructname()
 {
-	preerror("unique struct name expected");
+	prError("unique struct name expected");
 }
 
 void badtoken()
@@ -334,27 +329,25 @@ void badtoken()
 char buf[80];
 	if(displaytokerrors){
 		sprintf(buf,"tokenizer: bad character value - '%c'",cha);
-		preerror(buf);
+		prError(buf);
 	}
 }
 
-void expectederror(char *str)
+void expectedError(const std::string &Str)
 {
-char holdstr[80];
 	if(displaytokerrors){
-		sprintf(holdstr,"%s expected",str);
-		preerror(holdstr);
+		prError(Str + " expected"s);
 	}
 }
 
 void declareanonim()
 {
-	preerror("Error declare anonimus union");
+	prError("Error declare anonimus union");
 }
 
 void declareunion()
 {
-	preerror("Error declare union");
+	prError("Error declare union");
 }
 /*
 void not_union_static()
@@ -364,196 +357,196 @@ void not_union_static()
 
 void segoperror()
 {
-	preerror("only '=' or '><' operands valid with segment register");
+	prError("only '=' or '><' operands valid with segment register");
 }
 
 void segbyteerror()
 {
-	preerror("segment registers can not be used in byte or char math");
+	prError("segment registers can not be used in byte or char math");
 }
 
 void regmathoperror()
 {
-	preerror("invalid operation for non-AX register math");
+	prError("invalid operation for non-AX register math");
 }
 
 void begmathoperror()
 {
-	preerror("invalid operation for non-AL register math");
+	prError("invalid operation for non-AL register math");
 }
 
 void negregerror()
 {
-	preerror("negative non-constant invalid for non-AX register math");
+	prError("negative non-constant invalid for non-AX register math");
 }
 
 void regbyteerror()
 {
-	preerror("byte or char operands invalid for non-AX register math");
+	prError("byte or char operands invalid for non-AX register math");
 }
 
 void begworderror()
 {
-	preerror("specified 16 bit operand invalid for non-AL register math");
+	prError("specified 16 bit operand invalid for non-AL register math");
 }
 
 void regshifterror()
 {
-	preerror("only CL or 1 valid for non AX or AL register bit shifting");
+	prError("only CL or 1 valid for non AX or AL register bit shifting");
 }
 
 void regmatherror()
 {
-	preerror("invalid operand for non-AX register math");
+	prError("invalid operand for non-AX register math");
 }
 
 void DevideZero()
 {
-	preerror("impossible to divide into ZERO");
+	prError("impossible to divide into ZERO");
 }
 
 void wordnotoper()
 {
-	preerror("word or int operands invalid for non-EAX register math");
+	prError("word or int operands invalid for non-EAX register math");
 }
 
 void regexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%sword register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void bytevalexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%sbyte value expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void shortjumperror()
 {
-	preerror("invalid operand for SHORT jump");
+	prError("invalid operand for SHORT jump");
 }
 
 void invalidfarjumpitem()
 {
-	preerror("invalid operand for FAR jump");
+	prError("invalid operand for FAR jump");
 }
 
 void invalidfarcallitem()
 {
-	preerror("invalid operand for FAR call");
+	prError("invalid operand for FAR call");
 }
 
 void begexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%sbyte register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void reg32expected(int type)
 {
 char buf[50];
 	sprintf(buf,"%s32 bit register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void reg32regexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%s16 or 32 bit register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void regBXDISIBPexpected()
 {
-	preerror("use only one of BX, DI, SI or BP register");
+	prError("use only one of BX, DI, SI or BP register");
 }
 
 void bytedxexpected()
 {
-	preerror("byte constant or DX expected");
+	prError("byte constant or DX expected");
 }
 
 void axalexpected()
 {
-	preerror("EAX, AX or AL expected");
+	prError("EAX, AX or AL expected");
 }
 
 void invalidoperand(int type)
 {
 char buf[25];
 	sprintf(buf,"%sinvalid",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void mmxregexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%sMMX register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void xmmregexpected(int type)
 {
 char buf[50];
 	sprintf(buf,"%sXMM register expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void xmmregorvarexpected(int type)
 {
 char buf[60];
 	sprintf(buf,"%sXMM register or memory varible expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void mmxregordwordexpected(int type)
 {
 char buf[60];
 	sprintf(buf,"%sMMX register or memory varible expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void clornumberexpected()
 {
-	preerror("CL or constant expected");
+	prError("CL or constant expected");
 }
 
 void fpuvarexpected(int type)
 {
 char buf[70];
 	sprintf(buf,"%sexpected FPU register|long|dword|float var",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void fpustakexpected(int type)
 {
 char buf[40];
 	sprintf(buf,"%sexpected FPU register",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void fpu0expected()
 {
-	preerror("2-nd expected only st(0) fpu register");
+	prError("2-nd expected only st(0) fpu register");
 }
 
 void fpustdestroed()
 {
-	preerror("FPU register more 6 destroed");
+	prError("FPU register more 6 destroed");
 }
 
 void errstruct()
 {
-	preerror("illegal use of struct");
+	prError("illegal use of struct");
 }
 
 void tegnotfound()
 {
-	preerror("tag struct not found");
+	prError("tag struct not found");
 }
 
 void ErrWrite()
@@ -568,66 +561,66 @@ void ErrReadStub()
 
 void InvOperComp()
 {
-	preerror("invalid operation for compare");
+	prError("invalid operation for compare");
 }
 
 void mmxormem(int type)
 {
 char buf[60];
 	sprintf(buf,"%sexpected mmx register or memory variable",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void reg32orword(int type)
 {
 char buf[60];
 	sprintf(buf,"%s32 bit register or word variable expected",getnumoperand(type,"operand "));
-	preerror(buf);
+	prError(buf);
 }
 
 void undefclass(char *name)
 {
 char buf[30+IDLENGTH];
 	sprintf(buf,"Base class '%s' not defined",name);
-	preerror(buf);
+	prError(buf);
 }
 
 void unknowntype()
 {
-	preerror("unknown type");
+	prError("unknown type");
 }
 
 void destrdestreg()
 {
-	preerror("destroyed destination register");
+	prError("destroyed destination register");
 }
 
 void unknownstruct (char *name,char *sname)
 {
 char buf[IDLENGTH*2+30];
 	sprintf(buf,"unknown member '%s' in struct '%s'",name,sname);
-	preerror(buf);
+	prError(buf);
 }
 
 void unknowntagstruct(char *name)
 {
 char buf[IDLENGTH+16];
 	sprintf(buf,"unknown tag '%s'",name);
-	preerror(buf);
+	prError(buf);
 }
 
 void unknownobj(char *name)
 {
 char buf[IDLENGTH+32];
 	sprintf(buf,"unknown object for member '%s'",name);
-	preerror(buf);
+	prError(buf);
 }
 
-void unknownpragma(char *name)
+void unknownPragma(const char *Name)
 {
 char buf[IDLENGTH+32];
-	sprintf(buf,"unknown parametr for #pragma %s",name);
-	preerror(buf);
+	sprintf(buf,"unknown parametr for #pragma %s",Name);
+	prError(buf);
 }
 
 /*-----------------08.08.00 22:49-------------------
@@ -636,52 +629,51 @@ char buf[IDLENGTH+32];
 
 void warningoptnum()
 {
-	if(wact[0].usewarn)wact[0].fwarn("Optimize numerical expressions",linenumber,currentfileinfo);
+	if(wact[0].usewarn)wact[0].fwarn("Optimize numerical expressions",linenumber,CurrentFileInfoNum);
 }
 
-void  warningreg(char *str2)
+void warningreg(const char *str2)
 {
 char buf[50];
 	if(wact[1].usewarn){
 		sprintf(buf,"%s has been used by compiler",str2);
-		wact[1].fwarn(buf,linenumber,currentfileinfo);
+		wact[1].fwarn(buf,linenumber,CurrentFileInfoNum);
 	}
 }
 
-void  warningjmp(char *str2,int line,int file)
+void warningJmp(const std::string &Str2, unsigned int Line, unsigned int File)
 {
-char buf[50];
 	if(wact[2].usewarn){
-		sprintf(buf,"Short operator '%s' may be used",str2);
-		wact[2].fwarn(buf,line,file);
+		wact[2].fwarn("Short operator '"s + Str2 + "' may be used"s, Line, File);
 	}
 }
 
 void warningstring()
 {
 	if(wact[3].usewarn){
-		sprintf((char *)string2,"String \"%s\" repeated",string3);
-		wact[3].fwarn((char *)string2,linenumber,currentfileinfo);
+		sprintf((char *)String2,"String \"%s\" repeated",string3);
+		wact[3].fwarn((char *)String2,linenumber,CurrentFileInfoNum);
 	}
 }
 
 void warningexpand()
 {
-	if(wact[4].usewarn)wact[4].fwarn("Expansion variable",linenumber,currentfileinfo);
+	if(wact[4].usewarn)wact[4].fwarn("Expansion variable",linenumber,CurrentFileInfoNum);
 }
 
 void warningretsign()
 {
-	if(wact[5].usewarn)wact[5].fwarn("Signed value returned",linenumber,currentfileinfo);
+	if(wact[5].usewarn)wact[5].fwarn("Signed value returned",linenumber,CurrentFileInfoNum);
 }
 
-void warningprint(char *str,unsigned int line,unsigned int file)
+void warningPrint(const std::string &Str, unsigned int Line, unsigned int File)
 {
 	if(warning==TRUE){
-		if(wartype.name!=NULL&&wartype.file==stdout){
-			if((wartype.file=fopen(wartype.name,"w+t"))==NULL)wartype.file=stdout;
+		if (!wartype.Name.empty() && wartype.file == stdout) {
+			if ((wartype.file = fopen(wartype.Name.c_str(), "w+t")) == NULL)wartype.file = stdout;
 		}
-		fprintf(wartype.file,"%s(%d)> Warning! %s.\n",startfileinfo==NULL?"":(startfileinfo+file)->filename,line,str);
+		fprintf(wartype.file, "%s(%d)> Warning! %s.\n",
+				FilesInfo.empty() ? "" : FilesInfo[File].Filename.c_str(), Line, Str.c_str());
 	}
 }
 
@@ -690,18 +682,18 @@ void  warningdefined(char *name)
 char buf[IDLENGTH+30];
 	if(wact[6].usewarn){
 		sprintf(buf,"'%s' defined above, therefore skipped",name);
-		wact[6].fwarn(buf,linenumber,currentfileinfo);
+		wact[6].fwarn(buf,linenumber,CurrentFileInfoNum);
 	}
 }
 
 void warningnotused(char *name,int type)
 {
 char buf[IDLENGTH+40];
-char *typenames[]={"Variable","Structure","Function","Local variable",
-"Parameter variable","Local structure"};
+	const char *typenames[] = {"Variable", "Structure", "Function", "Local variable",
+							   "Parameter variable", "Local structure"};
 	if(wact[7].usewarn){
 		sprintf(buf,"%s '%s' possible not used",(char *)typenames[type],name);
-		wact[7].fwarn(buf,linenumber,currentfileinfo);
+		wact[7].fwarn(buf,linenumber,CurrentFileInfoNum);
 	}
 }
 
@@ -710,70 +702,64 @@ void warningusenotintvar(char *name)
 char buf[IDLENGTH+50];
 	if(wact[8].usewarn){
 		sprintf(buf,"Non-initialized variable '%s' may have been used",name);
-		wact[8].fwarn(buf,linenumber,currentfileinfo);
+		wact[8].fwarn(buf,linenumber,CurrentFileInfoNum);
 	}
 }
 
 void warningdestroyflags()
 {
-	if(wact[9].usewarn)wact[9].fwarn("Return flag was destroyed",linenumber,currentfileinfo);
+	if(wact[9].usewarn)wact[9].fwarn("Return flag was destroyed",linenumber,CurrentFileInfoNum);
 }
 
 void warningunreach()
 {
-	if(wact[10].usewarn)wact[10].fwarn("Code may not be executable",linenumber,currentfileinfo);
+	if(wact[10].usewarn)wact[10].fwarn("Code may not be executable",linenumber,CurrentFileInfoNum);
 }
 
 void warninline()
 {
-	if(wact[11].usewarn)wact[11].fwarn("Don't use local/parametric values in inline functions",linenumber,currentfileinfo);
+	if(wact[11].usewarn)wact[11].fwarn("Don't use local/parametric values in inline functions",linenumber,CurrentFileInfoNum);
 }
 
 void warnsize()
 {
-	if(wact[12].usewarn)wact[12].fwarn("Sources size exceed destination size",linenumber,currentfileinfo);
+	if(wact[12].usewarn)wact[12].fwarn("Sources size exceed destination size",linenumber,CurrentFileInfoNum);
 }
 
 void waralreadinit(char *reg)
 {
 #ifdef BETTA
-char buf[IDLENGTH+50];
-	sprintf(buf,"Register %s already initialized",reg);
-	warningprint(buf,linenumber,currentfileinfo);
+	warningPrint(("Register "s + reg + " already initialized"s).c_str(), linenumber, CurrentFileInfoNum);
 #endif
 }
 
-void waralreadinitreg(char *reg,char *reg2)
+void waralreadinitreg(char *reg, char *reg2)
 {
 #ifdef BETTA
-char buf[IDLENGTH+50];
-	sprintf(buf,"Register %s same as %s",reg,reg2);
-	warningprint(buf,linenumber,currentfileinfo);
+	warningPrint(("Register "s + reg + " same as "s + reg2).c_str(), linenumber, CurrentFileInfoNum);
 #endif
 }
 
 void warpragmapackpop()
 {
-	if(wact[13].usewarn)wact[13].fwarn("Pragma pack pop with no matching pack push",linenumber,currentfileinfo);
+	if(wact[13].usewarn)wact[13].fwarn("Pragma pack pop with no matching pack push",linenumber,CurrentFileInfoNum);
 }
 
-void missingpar(char *name)
+void missingpar(const char *Name)
 {
 char buf[120];
 	if(wact[14].usewarn){
-		sprintf(buf,"Missing parameter in function %s",name);
-		wact[14].fwarn(buf,linenumber,currentfileinfo);
+		sprintf(buf,"Missing parameter in function %s",Name);
+		wact[14].fwarn(buf,linenumber,CurrentFileInfoNum);
 	}
 //	preerror(buf);
 }
 
 void warreplasevar(char *name)
 {
-char buf[120];
 //	if(usewarn[14]){
 	if(displaytokerrors){
-		sprintf(buf,"Variable %s is replased on constant",name);
-		warningprint(buf,linenumber,currentfileinfo);
+		warningPrint(("Variable "s + name + " is replased on constant"s).c_str(), linenumber, CurrentFileInfoNum);
 	}
 //	}
 //	preerror(buf);
@@ -781,11 +767,10 @@ char buf[120];
 
 void waralreadinitvar(char *name,unsigned int num)
 {
-char buf[120];
 //	if(usewarn[14]){
 	if(displaytokerrors){
-		sprintf(buf,"Variable %s already initialized by constant %d",name,num);
-		warningprint(buf,linenumber,currentfileinfo);
+		warningPrint(("Variable "s + name + " already initialized by constant "s + std::to_string(num)).c_str(),
+					 linenumber, CurrentFileInfoNum);
 	}
 //	}
 //	preerror(buf);
@@ -793,22 +778,22 @@ char buf[120];
 
 void warcompneqconst()
 {
-	warningprint("Comparison not equal constant. Skipped code",linenumber,currentfileinfo);
+	warningPrint("Comparison not equal constant. Skipped code", linenumber, CurrentFileInfoNum);
 }
 
 void warcompeqconst()
 {
-	warningprint("Comparison equal constant. Skipped compare",linenumber,currentfileinfo);
+	warningPrint("Comparison equal constant. Skipped compare", linenumber, CurrentFileInfoNum);
 }
 
 void warpointerstruct()
 {
-	warningprint("Compiler not support pointers on structure",linenumber,currentfileinfo);
+	warningPrint("Compiler not support pointers on structure", linenumber, CurrentFileInfoNum);
 }
 
 void warESP()
 {
-	warningprint("ESP has ambiguous value",linenumber,currentfileinfo);
+	warningPrint("ESP has ambiguous value", linenumber, CurrentFileInfoNum);
 }
 
 /* *****************   map file *************** */
@@ -816,13 +801,13 @@ void warESP()
 void OpenMapFile()
 {
 char buf[256];
-	sprintf(buf,"%s.map",rawfilename);
+	sprintf(buf,"%s.map",RawFileName.c_str());
 	hmap=fopen(buf,"w+t");
 }
 
-char *GetRetType(int type,int flag)
+const char * getRetType(int type, int flag)
 {
-char *retcode;
+	const char *retcode;
 	if(flag&f_interrupt)return "";
 	switch(type){
 		case tk_bytevar:
@@ -877,17 +862,16 @@ char *retcode;
 	return retcode;;
 }
 
-char *GetTypeProc(int flag)
+const char * getTypeProc(int flag)
 {
-char *retcode;
-char *t;
-	string2[0]=0;
+	const char *t;
+	String2[0]=0;
 	if(flag&f_interrupt)return "interrupt";
-	if(flag&f_far)strcat((char *)string2,"far ");
-	if(flag&f_extern)strcat((char *)string2,"extern ");
-	if(flag&f_export)strcat((char *)string2,"_export ");
-	if(flag&f_inline)strcat((char *)string2,"inline ");
-	if(flag&f_static)strcat((char *)string2,"static ");
+	if(flag&f_far)strcat((char *)String2,"far ");
+	if(flag&f_extern)strcat((char *)String2,"extern ");
+	if(flag&f_export)strcat((char *)String2,"_export ");
+	if(flag&f_inline)strcat((char *)String2,"inline ");
+	if(flag&f_static)strcat((char *)String2,"static ");
 	if(flag&f_retproc){
 		t="";
 		switch(((flag&f_retproc)>>8)+tk_overflowflag-1){
@@ -916,7 +900,7 @@ char *t;
 				t="PLUSFLAG ";
 				break;
 		}
-		strcat((char *)string2,t);
+		strcat((char *)String2,t);
 	}
 	switch(flag&f_typeproc){
 		case tp_pascal:
@@ -932,11 +916,11 @@ char *t;
 			t="fastcall ";
 			break;
 	}
-	strcat((char *)string2,t);
-	return (char *)string2;
+	strcat((char *)String2,t);
+	return (char *)String2;
 }
 
-char *GetFunParam(unsigned char c,unsigned char c2,unsigned char c3)
+const char * getFunParam(unsigned char c, unsigned char c2, unsigned char c3)
 {
 	switch(c){
 		case 'B':
@@ -955,15 +939,15 @@ char *GetFunParam(unsigned char c,unsigned char c2,unsigned char c3)
 		case 'A': return "...";
 		case 'Q':
 			if(c2>=0x30&&c2<=0x37){
-				sprintf((char *)string2,"%s:%s",regs[1][c2-0x30],regs[1][c3-0x30]);
-				return (char *)string2;
+				sprintf((char *)String2,"%s:%s",regs[1][c2-0x30],regs[1][c3-0x30]);
+				return (char *)String2;
 			}
 			return "qword";
 		case 'E': return "double";
 		case 'S':
 			if(c2>=0x30&&c2<=0x37){
-				sprintf((char *)string2,"st(%c)",c2);
-				return (char *)string2;
+				sprintf((char *)String2,"st(%c)",c2);
+				return (char *)String2;
 			}
 			return "fpust";
 		case 'T': return "struct";
@@ -985,10 +969,10 @@ char iname[IDLENGTH];
 	return (char *)string3;
 }
 
-char *GetSizeVar(int type,int adr)
+const char * getSizeVar(int type, int adr)
 {
-char *reg;
-char *sign;
+	const char *reg;
+	const char *sign;
 	if(type==tp_postvar||type==tp_gvar)return "DS:???";
 	if(am32){
 		if(ESPloc)reg="ESP";
@@ -997,8 +981,8 @@ char *sign;
 	else reg="BP";
 	if(adr<0)sign="";
 	else sign="+";
-	sprintf((char *)string2,"%s%s%d",reg,sign,adr);
-	return (char *)string2;
+	sprintf((char *)String2,"%s%s%d",reg,sign,adr);
+	return (char *)String2;
 }
 
 void GetRangeUsed(char *buf,localinfo *ptr)
@@ -1016,18 +1000,19 @@ int i,fheader;
 char buf[32];
 	if(hmap==NULL)OpenMapFile();
 	if(hmap){
-		fprintf(hmap,"\n%s%s%s(",GetTypeProc(itok.flag),GetRetType(itok.rm,itok.flag),GetName(itok.name,itok.flag));
+		fprintf(hmap,"\n%s%s%s(", getTypeProc(itok.flag), getRetType(itok.rm, itok.flag),GetName(itok.name,itok.flag));
 		for(i=0;;i++){
-			unsigned char c=string[i];
+			unsigned char c=String[i];
 			if(c==0)break;
 			if(c>=0x30&&c<=0x37)continue;
 			if(i)fputc(',',hmap);
-			unsigned char c2=string[i+1];
-			unsigned char c3=string[i+2];
-			fputs(GetFunParam(c,c2,c3),hmap);
+			unsigned char c2=String[i+1];
+			unsigned char c3=String[i+2];
+			fputs(getFunParam(c, c2, c3),hmap);
 		}
 		fputc(')',hmap);
-		fprintf(hmap,"\nlocation: line %d-%d file %s",line,linenumber,startfileinfo==NULL?"":(startfileinfo+currentfileinfo)->filename);
+		fprintf(hmap, "\nlocation: line %d-%d file %s", line, linenumber,
+				FilesInfo.empty() ? "" : FilesInfo[CurrentFileInfoNum].Filename.c_str());
 		fprintf(hmap,"\noffset=0x%X(%d)\tsize=0x%X(%d)",itok.number,itok.number,itok.size,itok.size);
 	}
 	fheader=0;
@@ -1041,7 +1026,8 @@ char buf[32];
 					fheader=TRUE;
 				}
 				GetRangeUsed(buf,&ptr->li);
-				fprintf(hmap,"\n%-8s%-10s%-12s%-4d%-8d",GetRetType(ptr->rec.rectok,0),GetSizeVar(ptr->rec.type,ptr->rec.recnumber),buf,ptr->li.count,ptr->rec.recsize);
+				fprintf(hmap,"\n%-8s%-10s%-12s%-4d%-8d", getRetType(ptr->rec.rectok, 0),
+						getSizeVar(ptr->rec.type, ptr->rec.recnumber),buf,ptr->li.count,ptr->rec.recsize);
 				if(ptr->rec.npointr)for(i=ptr->rec.npointr;i>0;i--)fputc('*',hmap);
 				fputs(ptr->rec.recid,hmap);
 			}

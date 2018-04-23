@@ -81,7 +81,7 @@ void getpointeradr(ITOK *gstok,char *&gbuf,SINFO *gstr,int numpointer,int razr, 
 	}
 	else{
 		int retreg;
-		if((gstok->flag&f_useidx)==0&&(retreg=CheckIDZReg(gstok->name,reg,razr))!=NOINREG){
+		if((gstok->flag&f_useidx)==0&&(retreg= checkIDZReg(gstok->name, reg, razr))!=NOINREG){
 			if(am32==0&&retreg!=BX&&retreg!=SI&&retreg!=DI){
 				GenRegToReg(reg,retreg,razr);
 				IDZToReg(gstok->name,reg,razr);

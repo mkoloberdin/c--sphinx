@@ -1,3 +1,9 @@
+#ifndef CMM_SPHINX_RES_H
+#define CMM_SPHINX_RES_H
+
+#include <cstdint>
+#include <string>
+
 #define CRT_NEWRESOURCE 0x2000
 #define CRT_ERROR       0x7FFF
 #define CRT_CURSOR	1
@@ -28,9 +34,9 @@
 
 struct RES{
 	int type;	//тип ресурсв
-	char *tname;	//имя типа
+	std::string TName;	//имя типа
 	int id;   //его id
-	char *name;	//имя ресурса
+	std::string Name;	//имя ресурса
 	unsigned short lang;	//язык
 	unsigned char *res;	//указатель на таблицу ресурса
 	unsigned int size;	//размер таблицы
@@ -40,8 +46,8 @@ struct RES{
 #define SIZERESBUF 2048
 
 struct _STRINGS_{
-	char *id;
-	short val;
+	const char *id;
+	int16_t val;
 };
 
 _STRINGS_ typemem[7]={
@@ -216,3 +222,5 @@ struct _CURDIR_
 	unsigned short nameord;
 //	unsigned short res2;
 };
+
+#endif // CMM_SPHINX_RES_H

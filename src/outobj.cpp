@@ -22,99 +22,99 @@ unsigned int findextname(int extnum)
 	return 0;
 }
 
-int MakeObj()
+int makeObj()
 {
-unsigned int i;
-unsigned int count,sizeblock;
-	hout=CreateOutPut("obj","wb");
-	i=strlen(startfileinfo->filename);
-	string2[0]=(unsigned char)i;
-	strcpy((char *)&string2[1],startfileinfo->filename);
-	obj_outrecord(0x80,i+1,&string2[0]);// output the LNAMES
-	sprintf((char *)&string2[3],"%s %s",compilerstr,__DATE__);
-	i=strlen((char *)&string2[3]);
-	*(short *)&string2[0]=0;
-	string2[2]=(unsigned char)i;
-	obj_outrecord(0x88,i+3,&string2[0]);// output the LNAMES
+	size_t i;
+	unsigned int count, sizeblock;
+	hout= createOutPut("obj", "wb");
+    i = FilesInfo[0].Filename.size();
+	String2[0]=(unsigned char)i;
+	strcpy((char *)&String2[1],FilesInfo[0].Filename.c_str());
+	obj_outrecord(0x80,i+1,&String2[0]);// output the LNAMES
+	sprintf((char *)&String2[3],"%s %s",compilerstr,__DATE__);
+	i=strlen((char *)&String2[3]);
+	*(short *)&String2[0]=0;
+	String2[2]=(unsigned char)i;
+	obj_outrecord(0x88,i+3,&String2[0]);// output the LNAMES
 	for(count=0;count<totalmodule;count++){	//имена включаемых файлов
-		*(struct ftime *)&string2[2]=(startfileinfo+count)->time;
-		strcpy((char *)&string2[7],(startfileinfo+count)->filename);
-		i=strlen((startfileinfo+count)->filename);
-		*(short *)&string2[0]=0xE940;
-		string2[6]=(unsigned char)i;
-		obj_outrecord(0x88,i+7,&string2[0]);// output the LNAMES
+		*(struct ftime *) &String2[2] = FilesInfo[count].time;
+		strcpy((char *) &String2[7], FilesInfo[count].Filename.c_str());
+		i = FilesInfo[count].Filename.size();
+		*(short *)&String2[0]=0xE940;
+		String2[6]=(unsigned char)i;
+		obj_outrecord(0x88,i+7,&String2[0]);// output the LNAMES
 	}
 	count=outptr-startptr;	//размер кода
 	unsigned char *data=output+startptr;	//начало данных
-	*(short *)&string2[0]=0xE940;
-	obj_outrecord(0x88,2,&string2[0]);//конец коментарий
+	*(short *)&String2[0]=0xE940;
+	obj_outrecord(0x88,2,&String2[0]);//конец коментарий
 	if(!am32){
-		*(short *)&string2[0]=0xEA00;
-		string2[2]=1;
-		string2[3]=(unsigned char)(modelmem==SMALL?9:8);
-		obj_outrecord(0x88,4,&string2[0]);
+		*(short *)&String2[0]=0xEA00;
+		String2[2]=1;
+		String2[3]=(unsigned char)(modelmem==SMALL?9:8);
+		obj_outrecord(0x88,4,&String2[0]);
 	}
 	else{
-		*(short *)&string2[0]=0xA140;
-		obj_outrecord(0x88,2,&string2[0]);
+		*(short *)&String2[0]=0xA140;
+		obj_outrecord(0x88,2,&String2[0]);
 	}
 	obj_outrecord(0x96,39,(unsigned char *)"\000\005_TEXT\004CODE\004_BSS\003BSS\006DGROUP\005_DATA\004DATA");
 // output the SEGDEF
 	if(!am32){
-		string2[0]=(unsigned char)0x28;
-		*(short *)&string2[1]=(short)outptr;//count;// Set the length of the segment of DATA or CODE
-		string2[3]=0x02;	//имя сегмента _TEXT
-		*(short *)&string2[4]=0x0103;	//класс CODE Overlay NONE 1
-		obj_outrecord(0x98,6,string2);
+		String2[0]=(unsigned char)0x28;
+		*(short *)&String2[1]=(short)outptr;//count;// Set the length of the segment of DATA or CODE
+		String2[3]=0x02;	//имя сегмента _TEXT
+		*(short *)&String2[4]=0x0103;	//класс CODE Overlay NONE 1
+		obj_outrecord(0x98,6,String2);
 		i=2;
 
 		if(comfile==file_exe&&modelmem==SMALL){
-			string2[0]=(unsigned char)0x48;
-			*(short *)&string2[1]=outptrdata;// Set the length of the segment DATA
-			string2[3]=0x07;	//имя сегмента _DATA
-			*(short *)&string2[4]=0x0108;	//класс DATA Overlay NONE
-			obj_outrecord(0x98,6,string2);
+			String2[0]=(unsigned char)0x48;
+			*(short *)&String2[1]=outptrdata;// Set the length of the segment DATA
+			String2[3]=0x07;	//имя сегмента _DATA
+			*(short *)&String2[4]=0x0108;	//класс DATA Overlay NONE
+			obj_outrecord(0x98,6,String2);
 			i++;
 		}
 
 		postseg=i;
-		string2[0]=(unsigned char)0x48;
-		*(short *)&string2[1]=(short)postsize;// Set the length of the segment BSS
-		string2[3]=0x04;	//имя сегмента _BSS
-		*(short *)&string2[4]=0x0105;	//класс BSS Overlay NONE
-		obj_outrecord(0x98,6,string2);
+		String2[0]=(unsigned char)0x48;
+		*(short *)&String2[1]=(short)postsize;// Set the length of the segment BSS
+		String2[3]=0x04;	//имя сегмента _BSS
+		*(short *)&String2[4]=0x0105;	//класс BSS Overlay NONE
+		obj_outrecord(0x98,6,String2);
 		i++;
 
 		if(comfile==file_exe&&modelmem==SMALL){
 			obj_outrecord(0x96,6,(unsigned char *)"\005STACK");
-			string2[0]=0x74;
-			*(short *)&string2[1]=(short)stacksize;// Set the length of the segment STACK
-			string2[3]=0x09;	//имя сегмента STACK
-			*(short *)&string2[4]=0x0109;	//класс STACK Overlay NONE
-			obj_outrecord(0x98,6,string2);
+			String2[0]=0x74;
+			*(short *)&String2[1]=(short)stacksize;// Set the length of the segment STACK
+			String2[3]=0x09;	//имя сегмента STACK
+			*(short *)&String2[4]=0x0109;	//класс STACK Overlay NONE
+			obj_outrecord(0x98,6,String2);
 			stackseg=i;
 		}
-		string2[0]=6;	//имя DGROUP
+		String2[0]=6;	//имя DGROUP
 		if(comfile==file_exe&&modelmem==SMALL){
-			*(short *)&string2[1]=0x2FF;
-			*(short *)&string2[3]=0x3FF;//postseg*256+255;//0x3FF;
-			*(short *)&string2[5]=0x4ff;//stackseg*256+255;//0x4FF;
+			*(short *)&String2[1]=0x2FF;
+			*(short *)&String2[3]=0x3FF;//postseg*256+255;//0x3FF;
+			*(short *)&String2[5]=0x4ff;//stackseg*256+255;//0x4FF;
 			i=7;
 		}
 		else{
-			*(short *)&string2[1]=0x1FF;
+			*(short *)&String2[1]=0x1FF;
 //			*(short *)&string2[3]=0x2FF;
-			*(short *)&string2[3]=0x2ff;//postseg*256+255;//0x3FF;
+			*(short *)&String2[3]=0x2ff;//postseg*256+255;//0x3FF;
 			i=5;
 		}
-		obj_outrecord(0x9A,i,string2);
+		obj_outrecord(0x9A,i,String2);
 	}
 	else{
-		string2[0]=(unsigned char)0xA9;
-		*(long *)&string2[1]=(long)outptr;//count;// Set the length of the segment of DATA or CODE
-		string2[5]=0x02;	//имя сегмента _TEXT
-		*(short *)&string2[6]=0x0103;	//класс CODE Overlay NONE
-		obj_outrecord(0x99,8,string2);
+		String2[0]=(unsigned char)0xA9;
+		*(long *)&String2[1]=(long)outptr;//count;// Set the length of the segment of DATA or CODE
+		String2[5]=0x02;	//имя сегмента _TEXT
+		*(short *)&String2[6]=0x0103;	//класс CODE Overlay NONE
+		obj_outrecord(0x99,8,String2);
 		i=2;
 /*
 		string2[0]=(unsigned char)0xA9;
@@ -125,44 +125,44 @@ unsigned int count,sizeblock;
 		i++;*/
 
 		postseg=i;
-		string2[0]=(unsigned char)0xA9;
-		*(long *)&string2[1]=(long)postsize;// Set the length of the segment BSS
-		string2[5]=0x04;	//имя сегмента _BSS
-		*(short *)&string2[6]=0x0105;	//класс BSS Overlay NONE
-		obj_outrecord(0x99,8,string2);
+		String2[0]=(unsigned char)0xA9;
+		*(long *)&String2[1]=(long)postsize;// Set the length of the segment BSS
+		String2[5]=0x04;	//имя сегмента _BSS
+		*(short *)&String2[6]=0x0105;	//класс BSS Overlay NONE
+		obj_outrecord(0x99,8,String2);
 		i++;
 
 		obj_outrecord(0x96,11,(unsigned char *)"\005STACK\004FLAT");//9,10
 
 		if(comfile!=file_w32){
-			string2[0]=0x75;
-			*(long *)&string2[1]=(long)stacksize;// Set the length of the segment STACK
-			string2[5]=0x09;	//имя сегмента STACK
-			*(short *)&string2[6]=0x0109;	//класс STACK Overlay NONE
-			obj_outrecord(0x99,8,string2);
+			String2[0]=0x75;
+			*(long *)&String2[1]=(long)stacksize;// Set the length of the segment STACK
+			String2[5]=0x09;	//имя сегмента STACK
+			*(short *)&String2[6]=0x0109;	//класс STACK Overlay NONE
+			obj_outrecord(0x99,8,String2);
 			stackseg=i;
 		}
-		string2[0]=10;
+		String2[0]=10;
 
-		obj_outrecord(0x9A,1,string2);	//GRPDEF Group: FLAT
-		string2[0]=6;	//имя DGROUP
+		obj_outrecord(0x9A,1,String2);	//GRPDEF Group: FLAT
+		String2[0]=6;	//имя DGROUP
 		i=1;
 //		*(short *)&string2[i]=0x2FF;	//DATA
 //		i+=2;
-		*(short *)&string2[i]=postseg*256+255;//0x3FF;	//BSS
+		*(short *)&String2[i]=postseg*256+255;//0x3FF;	//BSS
 		i+=2;
 		if(comfile!=file_w32){
-			*(short *)&string2[i]=stackseg*256+255;//0x4FF
+			*(short *)&String2[i]=stackseg*256+255;//0x4FF
 			i+=2;
 		}
-		obj_outrecord(0x9A,i,string2);
+		obj_outrecord(0x9A,i,String2);
 	}
 // вывод EXTDEF
 	while(externnum>maxnumextname)maxnumextname+=MAXNUMEXTNAME;
 	numextname=(int *)MALLOC(maxnumextname*sizeof(int));
 // output the PUBDEF records for each exteral procedures (all procedures)
 	outeachPUBDEF(treestart);
-	if(lenextstr!=0)obj_outrecord(0x8c,lenextstr,&string[0]);
+	if(lenextstr!=0)obj_outrecord(0x8c,lenextstr,&String[0]);
 // output the data (LEDATA) in 1K chunks as required!
 	i=0;
 	char *bufobj=(char *)MALLOC(512*5);
@@ -243,23 +243,23 @@ restart:
 	}
 	if(sobj!=FALSE){
 // output end of OBJ notifier
-		string2[0]=0;
+		String2[0]=0;
 		i=1;
 	}
 	else{
 		count=EntryPoint();
-		*(short *)&string2[0]=0xC1;	//главный модуль имеет стартовый адрес котор нельзя менять.
-		*(short *)&string2[2]=0x101;
+		*(short *)&String2[0]=0xC1;	//главный модуль имеет стартовый адрес котор нельзя менять.
+		*(short *)&String2[2]=0x101;
 		if(count<65536){
-			*(short *)&string2[4]=(short)count;
+			*(short *)&String2[4]=(short)count;
 			i=6;
 		}
 		else{
-			*(long *)&string2[4]=(long)count;
+			*(long *)&String2[4]=(long)count;
 			i=8;
 		}
 	}
-	obj_outrecord(i==8?0x8B:0x8A,i,string2);
+	obj_outrecord(i==8?0x8B:0x8A,i,String2);
 	free(numextname);
 	runfilesize=ftell(hout);
 	fclose(hout);
@@ -337,45 +337,45 @@ nameext:
 			numextname[numextern++]=ptr->recnumber;
 			i=strlen(ptr->recid);
 			if((lenextstr+i+2)>=STRLEN){
-				obj_outrecord(0x8c,lenextstr,&string[0]);
+				obj_outrecord(0x8c,lenextstr,&String[0]);
 				lenextstr=0;
 			}
-			string[lenextstr++]=(unsigned char)i;
-			strcpy((char *)&string[lenextstr],ptr->recid);
+			String[lenextstr++]=(unsigned char)i;
+			strcpy((char *)&String[lenextstr],ptr->recid);
 			lenextstr+=i+1;
 		}
 		else{
 			if((ptr->rectok==tk_proc||ptr->rectok==tk_interruptproc)&&ptr->recsegm>=NOT_DYNAMIC){
-				string2[0]=(unsigned char)(am32==0?0:1);
-				string2[1]=0x01;
+				String2[0]=(unsigned char)(am32==0?0:1);
+				String2[1]=0x01;
 			}
 			else if((ptr->rectok>=tk_bits&&ptr->rectok<=tk_doublevar)||ptr->rectok==tk_structvar){
 				if((ptr->flag&f_extern))goto nameext;
 				if(am32){
-					string2[0]=1;
-					string2[1]=(unsigned char)(ptr->recpost==0?1:postseg);
+					String2[0]=1;
+					String2[1]=(unsigned char)(ptr->recpost==0?1:postseg);
 				}
 				else if(comfile==file_exe&&modelmem==SMALL){
-					string2[0]=1;
-					string2[1]=(unsigned char)(ptr->recpost==0?2:postseg);
+					String2[0]=1;
+					String2[1]=(unsigned char)(ptr->recpost==0?2:postseg);
 				}
 				else{
-					string2[0]=(unsigned char)(ptr->recpost==0?0:1);
-					string2[1]=(unsigned char)(ptr->recpost==0?1:postseg);
+					String2[0]=(unsigned char)(ptr->recpost==0?0:1);
+					String2[1]=(unsigned char)(ptr->recpost==0?1:postseg);
 				}
 			}
 			else goto endp;
-			for(i=0;ptr->recid[i]!=0;i++)string2[i+3]=ptr->recid[i];
-			string2[2]=(unsigned char)i;
+			for(i=0;ptr->recid[i]!=0;i++)String2[i+3]=ptr->recid[i];
+			String2[2]=(unsigned char)i;
 			if(ptr->recnumber<65536){
-				*(short *)&string2[i+3]=(short)ptr->recnumber;
-				string2[i+5]=0x00;
-				obj_outrecord(0x90,i+6,&string2[0]);
+				*(short *)&String2[i+3]=(short)ptr->recnumber;
+				String2[i+5]=0x00;
+				obj_outrecord(0x90,i+6,&String2[0]);
 			}
 			else{
-				*(long *)&string2[i+3]=(long)ptr->recnumber;
-				string2[i+7]=0x00;
-				obj_outrecord(0x91,i+8,&string2[0]);
+				*(long *)&String2[i+3]=(long)ptr->recnumber;
+				String2[i+7]=0x00;
+				obj_outrecord(0x91,i+8,&String2[0]);
 			}
 		}
 endp:

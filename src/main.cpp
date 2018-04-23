@@ -1,34 +1,46 @@
 #define _MAIN_
 
-#ifndef _UNIX_
+#ifdef _WIN32
 #include <conio.h>
 #include <io.h>
 #else
 #include <unistd.h>
+#include <sys/stat.h>
 #endif
 
 #include <fcntl.h>
 #include "tok.h"
 
+#include <string>
+using namespace std::string_literals;
+#include <boost/algorithm/string.hpp>
+#include <vector>
+#include <array>
+
+#include <iostream>
+
+#include "fs.h"
+
+/*
 #ifndef _UNIX_
 #include <dos.h>
 //int outfile=1;
 #endif
+*/
 
 static char **_Argv; //!!! simplest way to make your own variable
 
 unsigned char compilerstr[]="SPHINX C-- 0.239";
-char *rawfilename;					/* file name */
-char *rawext;
+fs::path RawFileName;					/* file name */
+fs::path RawExt;
 LISTCOM *listcom;
-EWAR wartype={stdout,NULL},errfile={NULL,NULL};
-int numfindpath=0;
-char *findpath[16];
+EWAR wartype = {stdout, ""s}, errfile = {nullptr, ""s};
+std::vector<fs::path> IncludePaths = { { "" } };
 char modelmem=TINY;
-char *stubfile=NULL;
-char *winstub=NULL;
+std::string StubFile;
+std::string winstub;
 FILE *hout=NULL;
-char *namestartupfile="startup.h--";
+fs::path StartupFilename = {"startup.h--"};
 
 
 char outext[4]="com";
@@ -54,7 +66,7 @@ char fobj=FALSE;	//признак генерации obj
 unsigned int	startptr = 0x100; 			// start address
 unsigned char wconsole=FALSE;	//признак генерации консольного приложения windows
 unsigned char optstr=FALSE;	//оптимизация строковых констант
-unsigned char crif=TRUE;	//check reply include file
+unsigned char opt_cri=TRUE;	//check reply include file
 unsigned char idasm=FALSE;	//ассемблерные инструкции считать идентификаторами
 unsigned char wbss=2;	//пост переменные в отдельную секцию
 unsigned char use_env=FALSE;	//переменная окружения
@@ -72,7 +84,7 @@ unsigned char ESPloc=FALSE;
 int startupfile=-1;
 int alignproc=8,aligncycle=8;
 
-char *usage[]={
+const char *usage[]={
 "USAGE: C-- [options] [FILE_NAME.INI] [SOURCE_FILE_NAME]",
 "",
 "                       C-- COMPILER OPTIONS",
@@ -137,7 +149,7 @@ char *usage[]={
 //" /SCD        split code and date",
 NULL};
 
-char *dir[]={
+const char *dir[]={
 	"ME",    "WORDS",   "SYM",   "LAI",
 
 	"OBJ",   "SOBJ",    "J0",		 "J1",     "J2",    "C",     "R",
@@ -182,32 +194,38 @@ enum {
 #endif
 	c_map,   c_we,      c_end};
 
-#define NUMEXT 6	//число разрешенных расширений компилируемого файла
-char extcompile[NUMEXT][4]={"c--","cmm","c","h--","hmm","h"};
+std::array<fs::path, 6> CompilableExtensions = {
+		".c--",
+		".cmm",
+		".c",
+		".h--",
+		".hmm",
+		".h"
+};
 
 char *bufstr=NULL;	//буфер для строк из процедур
 int sbufstr=SIZEBUF;	//начальный размер этого буфера
 
 void compile();
-void PrintInfo(char **str);
-void LoadIni(char *name);
+void printInfo(const char **str);
+void loadIni(const char *Name);
 //void CheckNumStr();
-void ListId(int num,unsigned char *list,short *ofs);
+void listId(int num, unsigned char *list, uint16_t *ofs);
 void printmemsizes();
-void print8item(char *str);
+void print8item(const char *Str);
 void doposts(void);
 void GetMemExeDat();
 void AddJmpApi();
 void startsymbiosys(char *symfile);
 int writeoutput();
 void BadCommandLine(char *str);
-void  CheckExtenshions();
+void checkExtenshions(const fs::path &Extension);
 void ImportName(char *name);
 void WarnUnusedVar();//предупреждения о неиспользованных процедурах и переменных
 void MakeExeHeader(EXE_DOS_HEADER *exeheader);
 void CheckPageCode(unsigned int ofs);
 int MakePE();
-int MakeObj();
+int makeObj();
 void CheckUndefClassProc();
 /*
 void PrintTegList(structteg *tteg)
@@ -221,12 +239,12 @@ void PrintTegList(structteg *tteg)
 
 //unsigned long maxusedmem=0;
 
-void ErrOpenFile(char *str)
+void errOpenFile(const fs::path &Str)
 {
-	fprintf(stderr,"Unable to open file %s.\n",str);
+	fprintf(stderr, "Unable to open file %s.\n", Str.c_str());
 }
 
-void main(int argc,char *argv[])
+int main(int argc, char **argv)
 {
 int count;
 unsigned char pari=FALSE;
@@ -235,48 +253,49 @@ unsigned char pari=FALSE;
  //	if(isatty(1)==0)outfile=0;
 #endif
 //	scrsize=24;
-	if(argc>1){
-		_Argv=argv;// This make portable code
-		bufstr=(char *)MALLOC(SIZEBUF);
-		output=(unsigned char *)MALLOC((size_t)MAXDATA);
-		outputdata=output;
-		postbuf=(postinfo *)MALLOC(MAXPOSTS*sizeof(postinfo));
-		strcpy((char *)string,argv[0]);
-		rawext=strrchr((char *)string,'\\');
-		if(rawext!=NULL){
-			rawext[0]=0;
-			IncludePath((char *)string);
+	if (argc > 1) {
+		_Argv = argv;// This make portable code
+		bufstr = (char *) MALLOC(SIZEBUF);
+		output = (unsigned char *) MALLOC((size_t) MAXDATA);
+		outputdata = output;
+		postbuf = (postinfo *) MALLOC(MAXPOSTS * sizeof(postinfo));
+
+		addIncludePath(fs::path{argv[0]}.parent_path()); // FIXME: perhaps rather add cwd
+
+		char *CMM_ENVVAR = getenv("C--");
+		if (CMM_ENVVAR != nullptr) {
+			RawFileName = fs::path(CMM_ENVVAR);
+			addIncludePath(RawFileName);
 		}
-		rawfilename=getenv("C--");
-		if(rawfilename!=NULL)IncludePath(rawfilename);
-		rawfilename=rawext=NULL;
-		LoadIni("c--.ini");
-		for(count=1;count<argc;count++){ //обработка командной строки
-			if(argv[count][0]=='/'||argv[count][0]=='-'){
-				if(SelectComand(argv[count]+1,&count)==c_end)BadCommandLine(argv[count]);
-			}
-			else{
-    	  if(pari==FALSE){
-      	  rawfilename=argv[count];
-      	  pari=TRUE;
-        	if((rawext=strrchr(rawfilename,'.'))!=NULL){
-						if(stricmp(rawext,".ini")==0){	//указан ini файл
-							rawfilename=NULL;
-							rawext=NULL;
-							LoadIni(argv[count]);
-							if(rawfilename==NULL)pari=FALSE;
+		RawFileName.clear();
+		RawExt.clear();
+		loadIni("c--.ini");
+		for (count = 1; count < argc; count++) { //обработка командной строки
+			if (argv[count][0] == '/' || argv[count][0] == '-') {
+				if (SelectComand(argv[count] + 1, &count) == c_end)
+					BadCommandLine(argv[count]);
+			} else {
+				if (pari == FALSE) {
+					RawFileName = argv[count];
+					pari = TRUE;
+					if (RawFileName.has_extension()) {
+						RawExt = RawFileName.extension();
+						if (boost::iequals(RawExt.string(), ".ini"s)) {    //указан ini файл
+							RawFileName.clear();
+							RawExt.clear();
+							loadIni(argv[count]);
+							if (RawFileName.empty())
+								pari = FALSE;
+						} else {
+							checkExtenshions(RawExt);
 						}
-						else{
-							*rawext++=0;
-							CheckExtenshions();
-  	  	    }
 					}
-	      }
+				}
 			}
 		}
 	}
-	if(rawfilename==NULL){
-		PrintInfo(usage);
+	if(RawFileName.empty()){
+		printInfo(usage);
 		exit( e_noinputspecified );
 	}
 	time(&systime); //текущее время
@@ -287,15 +306,18 @@ unsigned char pari=FALSE;
 	exit(e_someerrors);
 }
 
-void CheckExtenshions()
+void checkExtenshions(const fs::path &Extension)
 {
-int i;
-	for(i=0;i<NUMEXT;i++){
-		if(stricmp(rawext,extcompile[i])==0)break;
+	bool found = false;
+	for (const auto &ext: CompilableExtensions) {
+		if (boost::iequals(Extension.string(), ext.string())) {
+			found = true;
+			break;
+		}
 	}
-	if(i==NUMEXT){
-	 	printf("Bad input file extension '%s'.",rawext);
-	  exit(e_badinputfilename);
+	if (!found) {
+		std::cout << "Bad input file extension '"s << Extension << "'."s << std::endl;
+		exit(e_badinputfilename);
 	}
 }
 
@@ -307,19 +329,20 @@ union{
 	void *nextstr;
 };
 //создатьь имя файла с предупреждениями и если он есть удалить
-	errfile.name=(char *)MALLOC(strlen(rawfilename)+5);
-	sprintf(errfile.name,"%s.err",rawfilename);
-	if(stat(errfile.name,(struct stat *)string2)==0)remove(errfile.name);
+	errfile.Name = fs::path{RawFileName.string() + ".err"s};
+	if (stat(errfile.Name.c_str(), (struct stat *) String2) == 0)remove(errfile.Name.c_str());
 //если есть имя файла для предупреждений проверить его существование и удалить.
-	if(wartype.name!=NULL){
-		if(stat(wartype.name,(struct stat *)string2)==0)remove(wartype.name);
+	if (!(wartype.Name.empty())) {
+		if(stat(wartype.Name.c_str(),(struct stat *)String2)==0)remove(wartype.Name.c_str());
 	}
 	puts("Compiling Commenced . . .");
-	if(rawext!=NULL)sprintf((char *)string,"%s.%s",rawfilename,rawext);
+	if (!RawExt.empty())
+		sprintf((char *) String, "%s.%s", RawFileName, RawExt.c_str());
 	else{
-		for(unsigned int i=0;i<NUMEXT;i++){
-			sprintf((char *)string,"%s.%s",rawfilename,extcompile[i]);
-			if(stat((char *)string,(struct stat *)string2)==0)break;
+		for(const auto &Ext : CompilableExtensions){
+			RawFileName.replace_extension(Ext);
+			if (stat(RawFileName.c_str(), (struct stat *) String2) == 0)
+				break;
 		}
 	}
 	linenumber=0;
@@ -331,15 +354,15 @@ union{
 	inittokn();
 #endif
 
-	compilefile((char *)string,2); //собствено разборка и компиляция
+	compileFile(RawFileName, 2); //собствено разборка и компиляция
 	puts("Link . . .");
 	if(comfile==file_w32&&wbss==2){
 		wbss=FALSE;
 		if(wconsole==FALSE)wbss=TRUE;
 	}
 	if(notdoneprestuff==TRUE)doprestuff();	//startup cod
-	if(endifcount>=0)preerror("?endif expected before end of file");
-	AddObj();
+	if(endifcount>=0)prError("?endif expected before end of file");
+	addObj();
 	docalls();	//добавить внешние процедуры
 	addinitvar();
 	CheckUndefClassProc();
@@ -350,8 +373,8 @@ union{
 			UNDEFOFF *ocurptr;
 			linenumber=curptr->pos->line;
 			sprintf(holdstr,"\'%s\' offset undefined",curptr->name);
-			currentfileinfo=curptr->pos->file;
-			preerror(holdstr);
+			CurrentFileInfoNum=curptr->pos->file;
+			prError(holdstr);
 			free(curptr->pos);
 			if(curptr->next==NULL)break;
 			ocurptr=curptr->next;
@@ -396,7 +419,7 @@ union{
 		 		romsize=i*1024;
 				output[2]=(unsigned char)(romsize/512);
 			}
-			if(outptr>=romsize)preerror("The size of a code is more than the size of the ROM");
+			if(outptr>=romsize)prError("The size of a code is more than the size of the ROM");
 			for(;outptr<romsize;)op(aligner);
 			unsigned char summa=0;
 			for(unsigned int i=0;i<romsize;i++)summa+=output[i];
@@ -407,17 +430,17 @@ union{
 			longhold+=AlignCD(CS,16);
 //			if((outptr%16)!=0)outptr+=16-outptr%16;// paragraph align the end of the code seg
 			if(((long)outptrdata+(long)postsize+(long)stacksize)>65535L)
-					preerror("Data and stack total exceeds 64k");
+				prError("Data and stack total exceeds 64k");
 		}
 		else if(comfile==file_sys){
 			for(int i=0;i<sysnumcom;i++){
-				searchvar((listcom+i)->name);
+				searchVar((listcom + i)->name);
 				*(short *)&output[syscom+i*2]=(unsigned short)itok.number;
 			}
 			free(listcom);
 		}
 		else longhold+=(long)postsize+(long)(stacksize);
-		if(am32==0&&longhold>65535L&&!(modelmem==TINY&&(!resizemem)))preerror("Code, data and stack total exceeds 64k");
+		if(am32==0&&longhold>65535L&&!(modelmem==TINY&&(!resizemem)))prError("Code, data and stack total exceeds 64k");
 		if(posts>0)doposts();  //Установить адреса вызовов процедур и переходов
 		if(resizemem&&comfile==file_com){
 			segments_required=(outptr+postsize+stacksize+15)/16;
@@ -483,7 +506,7 @@ unsigned int postword,codeword;
 	stackword=stacksize;
 	if(comfile==file_com||(comfile==file_exe&&modelmem==TINY)){
 		if(resizemem==0){
-			stacklong=0xFFFE-outptr-postsize;
+			stacklong = 0xFFFE - outptr - postsize;
 			stackword=stacklong;
 		}
 		codeword=codeword-datasize-alignersize;
@@ -523,7 +546,7 @@ unsigned int postword,codeword;
 	}
 }
 
-void PrintInfo(char **str)
+void printInfo(const char **str)
 {
 	numstr=1;
 	for(int i=0;str[i]!=NULL;i++){
@@ -593,20 +616,20 @@ int len;
 		neg=TRUE;
 		pptr[i-1]=0;
 	}
-	strupr(pptr);
+	std::string UCStr = boost::algorithm::to_upper_copy(std::string(pptr));
 	for(i=0;dir[i]!=NULL;i++){
-		if(strcmp(dir[i],pptr)==0){
+		if (strcmp(dir[i], UCStr.c_str())==0){
 			if((i<=c_endinfo)&&count==0){
 				char buf[80];
 				sprintf(buf,"Option '%s' used only command line",dir[i]);
-				preerror(buf);
+				prError(buf);
 				return i;
 			}
 			if(i<=c_endstart&&notdoneprestuff!=TRUE){
 errlate:
 				char buf[80];
 				sprintf(buf,"Too late used '#pragma option %s'",dir[i]);
-				preerror(buf);
+				prError(buf);
 				return i;
 			}
 			switch(i){
@@ -671,7 +694,7 @@ errlate:
 					int j,jj;
 					puts("LIST OF RESERVED IDENTIFIERS:");
 					numstr=1;
-					ListId(53,id,idofs);
+					listId(53, id, idofs);
 					for(j=0;j<ID2S;j++){
 						puts(id2[j]);
 //						CheckNumStr();
@@ -693,7 +716,7 @@ errlate:
 				case c_lasm:
 					puts("LIST OF SUPPORTED ASSEMBLER INSTRUCTIONS:");
 					numstr=1;
-					ListId(26,asmMnem,ofsmnem);
+					listId(26, asmMnem, ofsmnem);
 					exit(e_ok);
 				case c_s:
 					if(ptr==NULL)return c_end;
@@ -707,8 +730,7 @@ errlate:
 					gwarning=(unsigned char)TRUE^neg;
 					break;
 				case c_wf:
-					if(wartype.name)free(wartype.name);
-					wartype.name=BackString(ptr);
+					wartype.Name = std::string(ptr);
 					break;
 				case c_de:
 					divexpand=(unsigned char)TRUE^neg;
@@ -717,7 +739,7 @@ errlate:
 					optnumber=(unsigned char)TRUE^neg;
 					break;
 				case c_ip:
-					IncludePath(ptr);
+					addIncludePath(ptr);
 					break;
 				case c_arg:
 					parsecommandline=(unsigned char)TRUE^neg;
@@ -785,10 +807,9 @@ nexpardll:
 					if(chip<3)chip=3;
 					break;
 				case c_stub:
-					if(stubfile)free(stubfile);
-					stubfile=BackString(ptr);
+					StubFile = std::string(ptr);
 					dpmistub=FALSE;
-					if(stricmp(stubfile,"dpmi")==0){
+					if (boost::iequals(StubFile, "dpmi"s)) {
 						if(notdoneprestuff!=TRUE)goto errlate;
 						dpmistub=TRUE;
 						usestub=FALSE;
@@ -805,13 +826,13 @@ nexpardll:
 					}
 					break;
 				case c_define:
-					addconsttotree(ptr,TRUE);
+					addConstToTree(ptr, TRUE);
 					break;
 				case c_ost:
 					optstr=(unsigned char)TRUE^neg;
 					break;
 				case c_cri:
-					crif=(unsigned char)1^neg;
+					opt_cri=(unsigned char)1^neg;
 					break;
 				case c_ia:
 					idasm=(unsigned char)1^neg;
@@ -874,26 +895,22 @@ nexpardll:
 				case c_help:
 				case c_h:
 				case c_hh:
-					PrintInfo(usage);
+					printInfo(usage);
 					exit(e_ok);
 				case c_mif:
-					if(ptr==NULL)return c_end;
-					if(rawfilename!=NULL){
-						free(rawfilename);
-						rawfilename=NULL;
-					}
-					if(rawext!=NULL){
-						free(rawext);
-						rawext=NULL;
-					}
-					char *temp;
-        	if((temp=strrchr(ptr,'.'))!=NULL){
-						*temp++=0;
-						rawext=BackString(temp);
-						CheckExtenshions();
- 	  	    }
-					rawfilename=BackString(ptr);
-					break;
+                    if (ptr == nullptr)
+                        return c_end;
+                    if (!RawExt.empty()) {
+                        RawExt.clear();
+                    }
+                    char *temp;
+                    if ((temp = strrchr(ptr, '.')) != NULL) {
+                        *temp++ = 0;
+                        RawExt = fs::path{ptr}.extension();
+                        checkExtenshions(RawExt);
+                    }
+                    RawFileName = fs::path(ptr);
+                    break;
 				case c_ac:
 					AlignCycle=(unsigned char)1^neg;
 					if(ptr!=NULL){
@@ -902,8 +919,7 @@ nexpardll:
 					}
 					break;
 				case c_ws:	//dos-stub for windows programs
-					if(winstub)free(winstub);
-					winstub=BackString(ptr);
+					winstub = std::string(ptr);
 					break;
 				case c_ind:
 					ImportName(ptr);
@@ -923,8 +939,8 @@ nexpardll:
 					if(ptr==NULL)return c_end;
 					len=getnumber((unsigned char *)ptr);
 					if(len>0&&len<=WARNCOUNT){
-						if(neg)wact[len-1].fwarn=warningprint;
-						else wact[len-1].fwarn=preerror3;
+						if(neg)wact[len-1].fwarn=warningPrint;
+						else wact[len-1].fwarn=prError3;
 					}
 					break;
 				case c_lst:
@@ -963,7 +979,7 @@ nexpardll:
 					break;
 				case c_sf:
 					if(ptr==NULL)return c_end;
-					namestartupfile=BackString(ptr);
+					StartupFilename = fs::path(ptr);
 					break;
 				case c_oir:
 					optinitreg=(unsigned char)1^neg;
@@ -1006,7 +1022,7 @@ void SetLST(unsigned char neg)
 		dbg|=c;
 		if(neg){
 			if((dbg&0xFE)==0)dbgact=TRUE;
-			AddEndLine();
+			addEndLine();
 		}
 		else{
 			InitDbg();
@@ -1015,20 +1031,20 @@ void SetLST(unsigned char neg)
 	}
 }
 
-void print8item(char *str)
+void print8item(const char *Str)
 {
 //	CheckNumStr();
-	for(int j=0;j<8;j++)printf(str,j);
+	for(int j=0;j<8;j++)printf(Str,j);
 	puts("");
 }
 
-void LoadIni(char *name)
+void loadIni(const char *Name)
 {
 FILE *inih;
 char m1[256];
-	if((inih=fopen(name,"rb"))==NULL){
-		if(strcmp(name,"c--.ini")==0){
-			sprintf(m1,"%s\\%s",findpath[0],name);
+	if((inih=fopen(Name,"rb"))==NULL){
+		if(strcmp(Name,"c--.ini")==0){
+			sprintf(m1, "%s/%s", IncludePaths[0].c_str(), Name);
 			if((inih=fopen(m1,"rb"))==NULL)return;
 		}
 		else return;
@@ -1046,7 +1062,7 @@ char m1[256];
 *****************************************************************************/
 void OutMemory()
 {
-	preerror("Compiler out of memory");
+	prError("Compiler out of memory");
 	exit(e_outofmemory);
 }
 
@@ -1072,20 +1088,8 @@ void *mem;
 	return mem;
 }
 
-void IncludePath(char *buf)
-{
-	if(numfindpath<MAXNUMPATH-1){
-		int len=strlen(buf);
-		if(buf[len-1]=='\\')buf[len-1]=0;
-		else len++;
-		char *a=(char *)MALLOC(len+1);
-		strcpy(a,buf);
-		strcat(a,"\\");
-		findpath[numfindpath]=a;
-		numfindpath++;
-		findpath[numfindpath]="";
-	}
-	else puts("To many include paths");
+void addIncludePath(const fs::path &Path) {
+	IncludePaths.insert(IncludePaths.end() - 1, Path);
 }
 
 void doposts()
@@ -1116,7 +1120,7 @@ unsigned long addvalue,i,addval,addvalw32=0,addvalbss=0;
 			postsize+=2;
 		}*/
 	}
-	if(am32==0&&(MAXDATA-outptrdata)<postsize)preerror("post variable size exceeds size left in data segment");
+	if(am32==0&&(MAXDATA-outptrdata)<postsize)prError("post variable size exceeds size left in data segment");
 	for(i=0;i<posts;i++){
 		switch((postbuf+i)->type){
 			case POST_VAR:
@@ -1161,7 +1165,7 @@ void GetMemExeDat()
 	if(outputdata==output&&outputdata!=0)outputdata=(unsigned char *)MALLOC((size_t)MAXDATA);
 }
 
-void ListId(int numfirstchar,unsigned char *list,short *ofs)
+void listId(int numfirstchar, unsigned char *list, uint16_t *ofs)
 {
 char buf[40];
 	for(int i=0;i<numfirstchar;i++){
@@ -1186,7 +1190,7 @@ int writeoutput()
 EXE_DOS_HEADER exeheader;  // header for EXE format
 	if(fobj){
 		if(comfile==file_w32&&ocoff)return MakeCoff();
-		return MakeObj();
+		return makeObj();
 	}
 	if(comfile==file_w32)return MakePE();
 	if(comfile==file_meos)return MakeMEOS();
@@ -1201,7 +1205,7 @@ EXE_DOS_HEADER exeheader;  // header for EXE format
 		else goto exefile;
 	}
 	if(comfile==file_com||comfile==file_sys||comfile==file_rom){
-		hout=CreateOutPut(outext,"wb");
+		hout= createOutPut(outext, "wb");
 		if(fwrite(output+startptr,comfile==file_rom?romsize:outptr-startptr,1,hout)!=1){
 			ErrWrite();
 			return(-1);
@@ -1209,7 +1213,7 @@ EXE_DOS_HEADER exeheader;  // header for EXE format
 	}
 	else if(comfile==file_exe){
 exefile:
-		hout=CreateOutPut(outext,"wb");
+		hout= createOutPut(outext, "wb");
 		MakeExeHeader(&exeheader);
 		if(fwrite(&exeheader,sizeof(EXE_DOS_HEADER),1,hout)!=1){
 errwr:
@@ -1264,7 +1268,7 @@ unsigned char *buf;
 	}
 	else buf=buf2;
 
-	searchtree(&btok,&bb,buf);
+	searchTree(&btok, &bb, buf);
 	if(bb==tk_id){
 		if(comfile==file_w32&&dllflag)return 0xffffffff;
 		printf("Error! Entry point '%s' not found.\n",buf);
@@ -1324,19 +1328,17 @@ int pointstart;
 
 void startsymbiosys(char *symfile)
 {
-unsigned int size;
+	size_t size;
 int filehandle;
-long filesize;
+	size_t filesize;
 	outptr=startptr;
 	if((filehandle=open(symfile,O_BINARY|O_RDONLY))==-1){;
-		ErrOpenFile(symfile);
+		errOpenFile(symfile);
 		exit(e_symbioerror);
 	}
-#ifdef _UNIX_
-	if((filesize=getfilelen(filehandle))!=-1L){
-#else
-	if((filesize=filelength(filehandle))!=-1L){
-#endif
+	boost::system::error_code ec;
+	filesize = fs::file_size(symfile, ec);
+	if (!ec) {
 		if(filesize+outptr<MAXDATA){
 			size=filesize;
 			if((unsigned int)read(filehandle,output+outptr,size)!=size){
@@ -1352,13 +1354,13 @@ long filesize;
 		}
 	}
 	else{
-		puts("Unable to determine symbio COM file size.");
+		prError("Unable to determine symbio COM file size: "s + ec.message());
 		exit(e_symbioerror);
 	}
 	close(filehandle);
 	outptrdata=outptr;
 	outputcodestart=outptr-startptr;
-	addconsttotree("__comsymbios",TRUE);
+	addConstToTree("__comsymbios", TRUE);
 }
 
 void BadCommandLine(char *str)
@@ -1374,7 +1376,7 @@ void warnunused(struct idrec *ptr)
 	if(ptr!=NULL){
 		if(ptr->count==0&&startupfile!=ptr->file){
 			linenumber=ptr->line;
-			currentfileinfo=ptr->file;
+			CurrentFileInfoNum=ptr->file;
 			int i=0;
 			switch(ptr->rectok){
 				case tk_proc:
@@ -1405,7 +1407,7 @@ void warnunused(struct idrec *ptr)
 void WarnUnusedVar()//предупреждения о неиспользованных процедурах и переменных
 {
 	warnunused(treestart);
-	for(unsigned int i=0;i<totalmodule;i++)warnunused((startfileinfo+i)->stlist);
+	for(unsigned int i=0;i<totalmodule;i++)warnunused(FilesInfo[i].stlist);
 }
 
 void addinitvar()
@@ -1423,9 +1425,9 @@ unsigned int i;
 		}
 		for(i=0;i<numfloatconst;i++){
 			if(dbg&2){
-				if((floatnum+i)->type==tk_float)sprintf((char *)string,"const float %f",(floatnum+i)->fnum);
-				else sprintf((char *)string,"const double %f",(floatnum+i)->dnum);
-				AddDataNullLine(4,(char *)string);
+				if((floatnum+i)->type==tk_float)sprintf((char *)String,"const float %f",(floatnum+i)->fnum);
+				else sprintf((char *)String,"const double %f",(floatnum+i)->dnum);
+				addDataNullLine(4, (char *) String);
 			}
 			outdwordd((floatnum+i)->num[0]);
 			if((floatnum+i)->type!=tk_float){
@@ -1442,7 +1444,7 @@ unsigned int i;
 		int j;
 		FSWI *swt=swtables+i;
 		if(alignword)AlignCD(DS,swt->type);
-		if(dbg&2)AddDataNullLine((char)swt->type,"switch table address");
+		if(dbg&2)addDataNullLine((char) swt->type, "switch table address");
 		if(am32==FALSE){	//вставить в код адрес таблицы
 			*(unsigned short *)&output[swt->ptb]=(unsigned short)outptrdata;
 		}
@@ -1459,7 +1461,7 @@ unsigned int i;
 			else outwordd(val);
 		}
 		if(swt->mode==2){
-			if(dbg&2)AddDataNullLine((char)swt->razr,"switch table value");
+			if(dbg&2)addDataNullLine((char) swt->razr, "switch table value");
 			if(oam32==FALSE){	//вставить в код адрес таблицы
 				*(unsigned short *)&output[swt->ptv]=(unsigned short)outptrdata;
 			}
@@ -1540,7 +1542,8 @@ unsigned char *oldinput;
 unsigned int oldinptr,oldendinptr;
 unsigned char bcha;
 unsigned int oline,ofile;
-char *ostartline;
+	char *ostartline;
+
 	if(alignword){
 		if(ptr->rectok==tk_structvar)alignersize+=AlignCD(DS,2);	//выровнять
 		else alignersize+=AlignCD(DS,GetVarSize(ptr->rectok));
@@ -1551,7 +1554,7 @@ char *ostartline;
 	ptr->recpost=0;
 	ptr->recnumber+=outptrdata;
 	oline=linenum2;
-	ofile=currentfileinfo;
+	ofile=CurrentFileInfoNum;
 	oldinput=input;
 	oldinptr=inptr2;
 	bcha=cha2;
@@ -1559,10 +1562,10 @@ char *ostartline;
 	input=(unsigned char *)ptr->sbuf;
 	inptr2=1;
 	ostartline=startline;
-	startline=input;
+	startline = (char *)input;
 	cha2=input[0];
 	linenum2=ptr->line;
-	currentfileinfo=ptr->file;
+	CurrentFileInfoNum=ptr->file;
 	endinptr=strlen((char *)input);
 	endinput=startline+endinptr;
 	endoffile=0;
@@ -1570,23 +1573,23 @@ char *ostartline;
 	if(tok==tk_structvar)datasize+=initstructvar((structteg *)ptr->newid,ptr->recrm);
 	else{
 long type,ssize;
-unsigned char typev;
+TypeValue TypeV;
 		if(tok>=tk_charvar&&tok<=tk_doublevar){
 			type=tok-(tk_charvar-tk_char);
-			typev=variable;
+			TypeV = TypeValue::VARIABLE;
 			ssize=typesize(type);
 		}
 		else if(tok==tk_pointer){
-			typev=pointer;
+			TypeV = TypeValue::POINTER;
 			type=itok.type;
 			if(am32==FALSE&&((itok.flag&f_far)==0))ssize=2;
 			else ssize=4;
 		}
-		datasize+=initglobalvar(type,ptr->recsize/ssize,ssize,typev);
+		datasize+= initGlobalVar(type, ptr->recsize / ssize, ssize, TypeV);
 	}
 	free(input);
 	linenum2=oline;
-	currentfileinfo=ofile;
+	CurrentFileInfoNum=ofile;
 	input=oldinput;
 	inptr2=oldinptr;
 	cha2=bcha;
@@ -1595,13 +1598,12 @@ unsigned char typev;
 	startline=ostartline;
 }
 
-FILE *CreateOutPut(char *ext,char *mode)
+FILE *createOutPut(const fs::path &Ext, const char *Mode)
 {
-char buf[256];
 FILE *diskout;
-	sprintf(buf,"%s.%s",rawfilename,ext);
-	if((diskout=fopen(buf,mode))==NULL){
-		ErrOpenFile(buf);
+    fs::path Filename = RawFileName.replace_extension(Ext);
+	if ((diskout = fopen(Filename.c_str(), Mode)) == nullptr) {
+		errOpenFile(Filename);
 		exit(e_notcreateoutput);
 	}
 	return diskout;
@@ -1623,9 +1625,9 @@ void CheckUndefClassProc()
 	for(int i=0;i<numundefclassproc;i++){
 		idrec *ptr=undefclassproc[i];
 		if(ptr->rectok==tk_undefproc){
-			currentfileinfo=ptr->file;
+			CurrentFileInfoNum=ptr->file;
 			linenumber=ptr->line;
-			thisundefined(ptr->recid);
+			thisUndefined(ptr->recid);
 		}
 	}
 }

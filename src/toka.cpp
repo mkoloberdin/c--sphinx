@@ -1,18 +1,26 @@
-#include <dos.h>
 #define _TOKA_
 
 #include "tok.h"
-#pragma option -w-pin
-#ifdef _UNIX_
+
+#include <cstdint>
+#include <chrono>
+#include <ctime> // localtime
+#include <sstream>
+#include <iomanip> // put_time
+#include <string>
+#include <boost/algorithm/string.hpp>
+
+#ifndef _WIN32
 #include <unistd.h>
 #else
+#pragma option -w-pin
 #include <io.h>
-#endif
-
 #ifdef __CONSOLE__
 #include <windows.h>
 #else
 #include <wchar.h>
+#endif
+#include <conio.h>
 #endif
 
 #include "dirlist.h"
@@ -66,8 +74,8 @@ unsigned int inptr2;
 unsigned int linenum2=0;	//если не нуль, то идет обраьотка
 char displaytokerrors;		/* flag to display errors, 0 for tok2 scan */
 char *bufrm=NULL;
-char *startline=NULL;
-char *endinput=NULL;
+char *startline = nullptr;
+char *endinput = nullptr;
 unsigned char skiplocals=FALSE;
 int scanlexmode=STDLEX;
 unsigned char bytesize=TRUE;
@@ -82,10 +90,10 @@ int searchlocals(ITOK *itok4,int *tok4,unsigned char *string4);
 unsigned char convert_char();
 void tokscan (int *tok4,ITOK *itok4,unsigned char *string4);
 int calcnum(int *ctok,ITOK *cstok,char *cstring,long *retval);
-int GetDirective(char *str);
-int CheckAsmName(char *name);
+int getDirective(const uint8_t *Str);
+int checkAsmName(const uint8_t *Name);
 void tag_massiv(int *tok4,ITOK *itok4,unsigned char *string4);
-int CheckResName(char *name);
+int checkResName(const char *Name);
 void GetTypeVar(int *tok4);
 int RegToRM(int number,int tok4);
 elementteg *FindClassEl(structteg *searcht,unsigned char *string4,int *addofs,
@@ -93,7 +101,7 @@ elementteg *FindClassEl(structteg *searcht,unsigned char *string4,int *addofs,
 int AskUseDestr(structteg *searcht);
 int SaveStruct(int size,idrec *newrec);
 int CheckDefPar(char *name);
-int searchtree2(idrec *fptr,ITOK *itok4,int *tok4,unsigned char *string4);
+int searchTree2(idrec *fptr, ITOK *itok4, int *tok4, unsigned char *String4);
 
 extern void blockerror();
 extern void block16_32error();
@@ -126,30 +134,15 @@ void CheckConvertString(char *string4)
 }
 #endif
 
-void DateToStr(char *buf)
+std::string getDateString()
 {
-//#ifdef _WC_
-#ifndef __CONSOLE__
-unsigned short coinfo[20];
-union REGS regs;
-	regs.x.eax=0x3800;
-	regs.x.edx=FP_OFF(coinfo);
-	intdos(&regs,&regs);
-	switch(coinfo[0]){
-		case 0:
-			sprintf(buf,"%s %2d %d",mon[timeptr.tm_mon],timeptr.tm_mday,timeptr.tm_year+1900);
-			break;
-		case 2:
-			sprintf(buf,"%d %s %2d",timeptr.tm_year+1900,mon[timeptr.tm_mon],timeptr.tm_mday);
-			break;
-		default:
-			sprintf(buf,"%2d %s %d",timeptr.tm_mday,mon[timeptr.tm_mon],timeptr.tm_year+1900);
-			break;
-	}
-#else
-//	GetDateFormat(LOCALE_SYSTEM_DEFAULT,DATE_SHORTDATE|LOCALE_NOUSEROVERRIDE,NULL,NULL,buf,80);
-	sprintf(buf,"%2d %s %d",timeptr.tm_mday,mon[timeptr.tm_mon],timeptr.tm_year+1900);
-#endif
+	auto now = std::chrono::system_clock::now();
+	auto in_time_t = std::chrono::system_clock::to_time_t(now);
+
+	std::stringstream ss;
+	ss << std::put_time(std::localtime(&in_time_t), "%Y-%m-%d");
+	auto s = ss.str();
+	return s;
 }
 
 void compressoffset(ITOK *thetok)
@@ -304,8 +297,8 @@ int dsword,dsword2;
 		return;
 	}
 
-	dsword2=dsword=itok4->post&POINTER;
-	itok4->post&=NOTPOINTER;
+	dsword2 = dsword = itok4->post & TOK_POINTER;
+	itok4->post &= TOK_NOTPOINTER;
 	memcpy(&dstok,itok4,sizeof(ITOK));
 	ExpandRm(dstok.rm,dstok.sib,&zoom,&base,&idx);
 	if((dstok.sib==CODE16||dstok.sib==(CODE16+1))&&dstok.rm!=rm_d16)razr=r16;
@@ -530,7 +523,7 @@ runblock:
 						free(bufrm);
 						CharToBackBuf(0);
 						sprintf((char *)string3,"&%s*%d+this;",BackTextBlock,GetVarSize(ttok));
-						bufrm=BackString((char *)string3);
+						bufrm= strdup((const char *)string3);
 //							puts((char *)string3);
 						goto con1;
 					}
@@ -599,7 +592,7 @@ con1:
 		else dstok.sib=0;
 		if(idx!=-1){
 			cstok.rm=4;
-			if(idx==4)preerror("ESP cannot be the index register");
+			if(idx==4)prError("ESP cannot be the index register");
 			if(base!=-1)dstok.sib=(zoom<<6)+(idx<<3)+base;
 			else{
 				dstok.sib=(zoom<<6)+(idx<<3)+5;
@@ -985,16 +978,16 @@ unsigned char *oldinput;
 unsigned int oldinptr,oldendinptr;
 unsigned char bcha;
 int otok;
-char *ostring;
-char *ofsst;
+	std::string ostring;
+	std::string ofsst;
 int retcode=-1;
 
 //07.09.04 22:45
 COM_MOD *ocurmod=cur_mod;
 	cur_mod=NULL;
 /////////////////
-	ostring=BackString((char *)string);
-	ofsst=BackString(buf);
+	ostring= std::string((char *) String);
+	ofsst= std::string(buf);
 	free(buf);
 	buf=NULL;
 	oldinput=input;	//сохр некотор переменые
@@ -1007,7 +1000,7 @@ COM_MOD *ocurmod=cur_mod;
 	strinf.bufstr=NULL;
 
 	if(idx&&*idx==-1&&*base==-1){
-		char *tbuf;
+		std::string tbuf;
 		int i;
 		int idx0,base0;
 		long numr;
@@ -1017,10 +1010,11 @@ COM_MOD *ocurmod=cur_mod;
 		i=0;
 		idx0=base0=-1;
 		numr=0;
-		if(*ofsst=='&')i++;
-		tbuf=BackString(ofsst+i);
+		if (ofsst[0] == '&')
+			i++;
+		tbuf= ofsst.substr(i);
 //		puts(tbuf);
-		input=(unsigned char *)tbuf;
+		input = (unsigned char *) tbuf.c_str();
 		inptr2=1;
 		cha2=input[0];
 		endinptr=strlen((char *)input);
@@ -1071,14 +1065,12 @@ COM_MOD *ocurmod=cur_mod;
 			*idx=idx0;
 			*base=base0;
 			*num+=numr;
-			free(ofsst);
 			ofsst=tbuf;
 //			printf("idx0=%d base0=%d num=%d\n",idx0,base0,numr);
 		}
-		else free(tbuf);
 	}
 
-	input=(unsigned char *)ofsst;
+	input = (unsigned char *) ofsst.c_str();
 	inptr2=1;
 	cha2=input[0];
 	if(cha2=='&'){
@@ -1095,9 +1087,9 @@ COM_MOD *ocurmod=cur_mod;
 			op(0x31);
 			op(0xC0+treg*9);
 		}
-		ofsst=NULL;
-		if(treg==AX)do_e_axmath(0,(am32+1)*2,&ofsst);
-		else getintoreg(treg,(am32+1)*2,0,&ofsst);
+		ofsst.clear();
+		if (treg == AX)do_e_axmath(0, (am32 + 1) * 2, ofsst);
+		else getintoreg(treg, (am32 + 1) * 2, 0, ofsst);
 		IDXToReg((char *)input,sizeel,treg);
 	}
 	strinf=ostr;
@@ -1111,8 +1103,7 @@ COM_MOD *ocurmod=cur_mod;
 	cha2=bcha;
 	endinptr=oldendinptr;
 	otok=0;
-	strcpy((char *)string,ostring);
-	free(ostring);
+	strcpy((char *) String, ostring.c_str());
 	if(sizeel>1)RegMulNum(treg,sizeel,(am32+1)*2,0,&otok,0);
 	return retcode;
 }
@@ -1141,7 +1132,7 @@ void nextchar()
 
 				endinptr=cur_mod->endinptr;
 				linenumber=cur_mod->linenumber;
-				currentfileinfo=cur_mod->currentfileinfo;
+				CurrentFileInfoNum=cur_mod->currentfileinfo;
 				COM_MOD *temp=cur_mod;
 				cur_mod=cur_mod->next;
 				if(temp->freze==FALSE){
@@ -1173,7 +1164,7 @@ void ScanTok2()
 	linenum2=linenumber;
 	cha2=cha;
 	displaytokerrors=0;
-	tokscan(&tok2,&itok2,string2);
+	tokscan(&tok2,&itok2,String2);
 }
 
 unsigned int ScanTok3()
@@ -1192,7 +1183,7 @@ ITOK oitok;
 			char disp=displaytokerrors;
 			displaytokerrors=0;
 			strcpy((char *)string3,itok.name);
-			searchtree(&itok,&tok,string3);	//NEW 09.06.06 20:29
+			searchTree(&itok, &tok, string3);	//NEW 09.06.06 20:29
 //			searchtree2(definestart,&itok,&tok,string3);
 			displaytokerrors=disp;
 		}
@@ -1217,16 +1208,16 @@ if(debug)puts("start nexttok");
 	linenumber=linenum2;
 	cha=cha2;
 	displaytokerrors=1;
-	tokscan(&tok,&itok,string); //разбор команды
+	tokscan(&tok,&itok,String); //разбор команды
 //	printf("input=%08X inptr=%08X tok=%d %s\n",input,inptr,tok,itok.name);
 	if(tok==tk_dblcolon&&numblocks){
 		skiplocals=TRUE;
-		tokscan(&tok,&itok,string); //разбор команды
+		tokscan(&tok,&itok,String); //разбор команды
 	}
 	ScanTok2();
 	if(tok2==tk_dblcolon&&numblocks){
 		skiplocals=TRUE;
-		tokscan(&tok2,&itok2,string2);
+		tokscan(&tok2,&itok2,String2);
 	}
 	if(tok2==tk_tilda){
 		if(ScanTok3()==tk_number){
@@ -1280,7 +1271,7 @@ if(debug)puts("start nexttok");
 		}
 
 		int qq;	//09.07.08 13:27 new
-		if((qq=CheckAsmName(itok2.name))!=-1){
+		if ((qq = checkAsmName((const uint8_t *) itok2.name)) != -1) {
 			tok=tk_idasm;
 			itok.rm=qq;
 			strcpy(itok.name,itok2.name);
@@ -1335,7 +1326,7 @@ void whitespace() //пропуск нзначащих символов
 	while(isspace(cha)||cha==255||cha==0){
 		if(cha==13){
 			linenumber++;
-			if((dbg&2)&&displaytokerrors&&notdef)startline=input+inptr+1;
+			if ((dbg & 2) && displaytokerrors && notdef)startline = (char *)(input + inptr + 1);
 			if(scanlexmode==RESLEX||scanlexmode==DEFLEX||scanlexmode==ASMLEX)break;
 		}
 		nextchar();
@@ -1352,7 +1343,8 @@ unsigned char c;
 	if(cha!='\\'){
 		if(cha==13){
 			linenumber++;
-			if((dbg&2)&&displaytokerrors&&notdef)startline=input+inptr+1;
+			if ((dbg & 2) && displaytokerrors && notdef)
+				startline = (char *)(input + inptr + 1);
 		}
 		return(cha);
 	}
@@ -1482,7 +1474,7 @@ nextstr:
 		savestring3=FALSE;
 		string3[posstr3-1]=0;
 	}
-	if(strptr>=(STRLEN-1)&&displaytokerrors)preerror("Maximum String Length Exceeded");
+	if(strptr>=(STRLEN-1)&&displaytokerrors)prError("Maximum String Length Exceeded");
 	string4[strptr]=0;
 	*tok4=tk_string;
 //	itok4->number=strptr;
@@ -1519,9 +1511,10 @@ nextstr:
 		goto nextstr;
 	}
 
+#ifdef _WIN32
 	if(useunicode&&displaytokerrors){
 		char *bak;
-		bak=BackString((char *)string4);
+		bak= backString((char *) string4);
 #ifdef __CONSOLE__
 		strptr=MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,bak,-1,(wchar_t *)string4,STRLEN)-1;
 #else
@@ -1536,6 +1529,7 @@ nextstr:
 		itok4->flag|=s_unicod;
 		free(bak);
 	}
+#endif // _WIN32
 	itok4->number=strptr;
 }
 
@@ -1575,7 +1569,7 @@ if(debug)printf("start tokscan input=%08X inptr=%08X %c%s\n",input,inptr,cha,inp
 			nextchar();
 		}while((strptr<IDLENGTH)&&(CheckChar2()==TRUE));
 		if(strptr>=IDLENGTH){ //длина больше 32
-			if(displaytokerrors)preerror("Maximum length for an identifier exceeded");
+			if(displaytokerrors)prError("Maximum length for an identifier exceeded");
 			while(CheckChar2()==TRUE)nextchar();	//дочитать слово
 			strptr=IDLENGTH-1;	//обрезать до 32
 		}
@@ -1595,16 +1589,20 @@ if(debug)printf("start tokscan input=%08X inptr=%08X %c%s\n",input,inptr,cha,inp
 		if (debug)printf("ID: '%s' cur_mod=%08X prev cur_mod=%08X\n",itok4->name,cur_mod,cur_mod==NULL?0:cur_mod->next);
 #endif
 		if(scanlexmode==RESLEX){
-			if(stricmp((char *)string4,"not")==0)*tok4=tk_not;
-			else if(stricmp((char *)string4,"or")==0)*tok4=tk_or;
-			else if(stricmp((char *)string4,"xor")==0)*tok4=tk_xor;
-			else if(stricmp((char *)string4,"and")==0)*tok4=tk_and;
-			else{
+			if (boost::iequals(std::string((char *)string4), "not"))
+				*tok4 = tk_not;
+			else if (boost::iequals(std::string((char *)string4), "or"))
+				*tok4 = tk_or;
+			else if (boost::iequals(std::string((char *) string4), "xor"))
+				*tok4 = tk_xor;
+			else if (boost::iequals(std::string((char *) string4), "and"))
+				*tok4 = tk_and;
+			else {
 				if(uppercase)*tok4=tk_ID;
 				else *tok4=tk_id;
-				searchtree(itok4,tok4,string4);
+				searchTree(itok4, tok4, string4);
 				if(*tok4==tk_id||*tok4==tk_ID){
-					if((useme=CheckResName(itok4->name))!=-1){
+					if((useme= checkResName(itok4->name))!=-1){
 						*tok4=tk_rescommand;
 						itok4->number=useme;
 					}
@@ -1625,7 +1623,7 @@ if(debug)printf("start tokscan input=%08X inptr=%08X %c%s\n",input,inptr,cha,inp
 						*tok4=tk_charvar+useme%DATATYPES;
 						itok4->segm=useme/DATATYPES;
 						itok4->number=0;
-						itok4->post=POINTER;
+						itok4->post=TOK_POINTER;
 						goto yesid;
 					}
 				}
@@ -1653,7 +1651,8 @@ if(debug)printf("start tokscan input=%08X inptr=%08X %c%s\n",input,inptr,cha,inp
 			if(asmparam||*tok4==tk_ID){
 				for(useme=0;useme<8;useme++){
 					int i;
-					if(asmparam)i=stricmp((char *)string4,regs[0][useme]);
+					if (asmparam)
+						i = !boost::iequals((char *) string4, regs[0][useme]);
 					else i=strcmp((char *)string4,regs[0][useme]);
 					if(i==0){
 						*tok4=tk_reg;
@@ -1665,7 +1664,8 @@ extreg:
 						}
 						return;
 					}
-					if(asmparam)i=stricmp((char *)string4,begs[useme]);
+					if (asmparam)
+						i = !boost::iequals((char *) string4, begs[useme]);
 					else i=strcmp((char *)string4,begs[useme]);
 					if(i==0){
 						*tok4=tk_beg;
@@ -1707,7 +1707,8 @@ extreg:
 		if(strptr==3&&(string4[0]=='E'||(asmparam&&string4[0]=='e'))){// check for EAX, ECX, EDX, ...
 			for(useme=0;useme<8;useme++){
 				int i;
-				if(asmparam)i=stricmp((char *)&string4[1],regs[0][useme]);
+				if (asmparam)
+					i = !boost::iequals((char *) &string4[1], regs[0][useme]);
 				else i=strcmp((char *)&string4[1],regs[0][useme]);
 				if(i==0){
 					*tok4=tk_reg32;
@@ -1748,14 +1749,14 @@ extreg32:
 					}
 				}
 			}
-			else if((*(short *)&string[0]&0x5f5f)==0x4d4d){
+			else if((*(short *)&String[0]&0x5f5f)==0x4d4d){
 				if(string4[2]>='0'&&string4[2]<='7'){
 					itok4->number=string4[2]-'0';
 					*tok4=tk_mmxreg;
 					return;
 				}
 			}
-			else if((*(short *)&string[1]&0x5f5f)==0x4d4d&&(string4[0]&0x5f)=='X'){
+			else if((*(short *)&String[1]&0x5f5f)==0x4d4d&&(string4[0]&0x5f)=='X'){
 				if(string4[3]>='0'&&string4[3]<='7'){
 					itok4->number=string4[3]-'0';
 					*tok4=tk_xmmreg;
@@ -1764,8 +1765,9 @@ extreg32:
 			}
 		}
 		if(useasm==FALSE){
-			if((useme=FastSearch(id,idofs,2,(char *)string4))!=-1)*tok4=useme;
-			else if(idasm==TRUE&&(useme=CheckAsmName((char *)string4))!=-1){
+			if ((useme = fastSearch(id, idofs, 2, string4)) != -1)
+				*tok4 = useme;
+			else if (idasm == TRUE && (useme = checkAsmName(string4)) != -1) {
 				*tok4=tk_idasm;
 				itok4->rm=useme;
 				return;
@@ -1789,7 +1791,7 @@ extreg32:
 						input=cur_mod->input;
 						endinptr=cur_mod->endinptr;
 						linenumber=cur_mod->linenumber;
-						currentfileinfo=cur_mod->currentfileinfo;
+						CurrentFileInfoNum=cur_mod->currentfileinfo;
 						COM_MOD *temp=cur_mod;
 						cur_mod=cur_mod->next;
 						free(temp);
@@ -1803,7 +1805,7 @@ extreg32:
 			}
 			if(searchlocals(itok4,tok4,string4)==FALSE){//поиск среди локальных меток
 			//если ничего не найдено поиск в дереве переменых
-				searchtree(itok4,tok4,string4);
+				searchTree(itok4, tok4, string4);
 				if(*tok4==tk_endline){
 					if(scanlexmode!=DEFLEX){
 						tokscan(tok4,itok4,string4);
@@ -1865,7 +1867,7 @@ extreg32:
 			case tk_line: *tok4=tk_number; itok4->number=linenumber; break;
 			case tk_file:
 				*tok4=tk_string;
-				strcpy((char *)string4,(startfileinfo+currentfileinfo)->filename);
+				strcpy((char *) string4, FilesInfo[CurrentFileInfoNum].Filename.c_str());
 				itok4->number=strlen((char *)string4);
 				break;
 			case tk_structvar:
@@ -2181,7 +2183,7 @@ yesid:
 			findofset=TRUE;
 			tokscan(tok4,itok4,string4);
 			findofset=FALSE;
-			if((useme=GetDirective((char *)string4))!=-1){
+			if ((useme = getDirective(string4)) != -1) {
 				itok4->number=useme;
 				*tok4=tk_question;
 				break;
@@ -2336,23 +2338,25 @@ localrec *ptr;
 //			if(displaytokerrors)printf("name=%s tok=%d post=%d flag=%08X rm=%d\n",itok4->name,*tok4,itok4->post,itok4->flag,itok4->rm);
 			break;
 		case '(':
-			if(*(unsigned short *)&(input[inptr])==
+			if(*(uint16_t *)&(input[inptr])==
 #ifdef _WC_
 				')E'
 #else
-				'E)'
+				'E' + ')' * 256
 #endif
 				||
-					(*(unsigned short *)&(input[inptr])==
+					(*(uint16_t *)&(input[inptr])==
 #ifdef _WC_
 				')e'
 #else
-				'e)'
+				'e' + ')' * 256
 #endif
 					)){
 				for(useme=0;useme<8;useme++){
 					int i;
-					if(asmparam)i=strnicmp((char *)input+inptr+2,regs[0][useme],2);
+					if (asmparam)
+						i = !boost::iequals(std::string((char *) input + inptr + 2).substr(0, 2),
+											std::string(regs[0][useme]).substr(0, 2));
 					else i=strncmp((char *)input+inptr+2,regs[0][useme],2);
 					if(i==0){
 						inptr+=4;
@@ -2407,7 +2411,7 @@ localrec *ptr;
 			nextchar();
 			tokscan(tok4,itok4,string4);
 			*tok4=tk_question;
-			itok4->number=GetDirective((char *)string4);
+			itok4->number = getDirective(string4);
 			return;
 		case '~': *tok4=tk_tilda; break;
 		case 26: *tok4=tk_eof; return;
@@ -2500,7 +2504,7 @@ char *buf=NULL;
 	newm->inptr2=newm->inptr=inptr;
 	newm->endinptr=endinptr;
 	newm->linenumber=linenumber;
-	newm->currentfileinfo=currentfileinfo;
+	newm->currentfileinfo=CurrentFileInfoNum;
 	newm->paramdef=buf;
 	newm->next=cur_mod;
 	cur_mod=newm;
@@ -2522,7 +2526,7 @@ void BackMod()
 		input=cur_mod->input;
 		endinptr=cur_mod->endinptr;
 		linenumber=cur_mod->linenumber;
-		currentfileinfo=cur_mod->currentfileinfo;
+		CurrentFileInfoNum=cur_mod->currentfileinfo;
 		cur_mod=cur_mod->next;
 		cha2=input[inptr2];
 	}
@@ -2578,22 +2582,22 @@ COM_MOD *fmod;
 	fmod->inptr2=fmod->inptr=inptr-1;
 	fmod->endinptr=endinptr;
 	fmod->linenumber=linenumber;
-	fmod->currentfileinfo=currentfileinfo;
+	fmod->currentfileinfo=CurrentFileInfoNum;
 	cur_mod=fmod;
 //	if(debug)printf("new curmod %08X prev cur_mod=%08X old input %08X %s\n",cur_mod,cur_mod->next,input,name);
-	input=name;
+	input = (unsigned char *) name;
 	inptr=1;
 	cha=input[0];
 	endinptr=strlen(name)+1;
 }
 
-int searchtree2(idrec *fptr,ITOK *itok4,int *tok4,unsigned char *string4)
+int searchTree2(idrec *fptr, ITOK *itok4, int *tok4, unsigned char *String4)
 //поиск в дереве переменых
 {
 struct idrec *ptr;
 int cmpresult;
 	for(ptr=fptr;ptr!=NULL;){
-		if((cmpresult=strcmp(ptr->recid,(char *)string4))==0){
+		if((cmpresult=strcmp(ptr->recid,(char *)String4))==0){
 			if(scanlexmode==RESLEX&&ptr->rectok!=tk_number&&ptr->rectok!=tk_string)break;
 			itok4->lnumber=ptr->reclnumber;
 			itok4->rm=ptr->recrm;
@@ -2620,7 +2624,7 @@ int cmpresult;
 					NewMod(itok4->size);
 					notdef=FALSE;
 					cur_mod->declareparamdef=ptr->newid;
-					input=ptr->sbuf;
+					input = (unsigned char *) ptr->sbuf;
 					inptr=1;
 					cha=input[0];
 					endinptr=strlen((char *)input);
@@ -2634,7 +2638,7 @@ int cmpresult;
 			else if(ptr->newid){
 				switch(*tok4){
 					case tk_string:
-						memcpy((char *)string4,ptr->newid,itok4->number);
+						memcpy((char *)String4,ptr->newid,itok4->number);
 						if(displaytokerrors&&itok4->rm==1&&ptr->sbuf)strcpy((char *)string3,ptr->sbuf);
 						break;
 					case tk_structvar:
@@ -2654,17 +2658,17 @@ int cmpresult;
 					case tk_apiproc:
 					case tk_declare:
 					case tk_undefproc:
-						strcpy((char *)string4,ptr->newid);
+						strcpy((char *)String4,ptr->newid);
 						break;
 					default:
 						if(scanlexmode==DEFLEX2){
 							*tok4=tk_id;
 							return TRUE;
 						}
-						strcpy((char *)string4,ptr->newid);
-						if(strcmp((char *)string4,ptr->recid)!=0){	 // see if ID has changed
+						strcpy((char *)String4,ptr->newid);
+						if(strcmp((char *)String4,ptr->recid)!=0){	 // see if ID has changed
 //							searchtree2(fptr,itok4,tok4,string4);  // search again
-							searchtree(itok4,tok4,string4);  // search again
+							searchTree(itok4, tok4, String4);  // search again
 							switch(*tok4){
 								case tk_proc:
 								case tk_apiproc:
@@ -2673,7 +2677,7 @@ int cmpresult;
 									strcpy(itok4->name,ptr->recid);	//имя нужно для undefine
 									break;
 								default:
-									strncpy(itok4->name,(char *)string4,IDLENGTH-1);	//имя нужно для undefine
+									strncpy(itok4->name,(char *)String4,IDLENGTH-1);	//имя нужно для undefine
 									break;
 							}
 							return TRUE;
@@ -2681,7 +2685,7 @@ int cmpresult;
 						break;
 				}
 			}
-			else string4[0]=0;
+			else String4[0]=0;
 			strcpy(itok4->name,ptr->recid);	//имя нужно для undefine
 			if(displaytokerrors)ptr->count++;
 			break;
@@ -2693,14 +2697,14 @@ int cmpresult;
 	else return TRUE;
 }
 
-int searchtree(ITOK *itok4,int *tok4,unsigned char *string4)
+int searchTree(ITOK *itok4, int *tok4, unsigned char *String4)
 {
 int retval=FALSE;
 	if(skipfind==FALSE){
-		if(staticlist)retval=searchtree2(staticlist,itok4,tok4,string4);
-		if(!retval)retval=searchtree2(treestart,itok4,tok4,string4);
+		if(staticlist)retval= searchTree2(staticlist, itok4, tok4, String4);
+		if(!retval)retval= searchTree2(treestart, itok4, tok4, String4);
 		if(!retval){
-			if((retval=searchtree2(definestart,itok4,tok4,string4))==TRUE){
+			if((retval= searchTree2(definestart, itok4, tok4, String4))==TRUE){
 				if(scanlexmode==DEFLEX2)*tok4=tk_id;
 			}
 		}
@@ -2724,8 +2728,6 @@ void AddDynamicList(idrec *ptr)
 	DynamicList[countDP]=ptr;
 	countDP++;
 }
-
-#include <conio.h>
 
 void docals(struct idrec *ptr)
 /* extract any procedures required from interal library and insert any
@@ -2790,12 +2792,12 @@ void docals(struct idrec *ptr)
 					if(updatecall((unsigned int)ptr->recnumber,outptr,0)>0){
 						ptr->recnumber=outptr;	// record location placed
 						linenumber=ptr->line;
-						currentfileinfo=ptr->file;
+						CurrentFileInfoNum=ptr->file;
 						if((ptr->flag&f_typeproc)==tp_fastcall){
-							if(includeit(1)==-1)thisundefined(itok.name);
+							if(includeit(1)==-1)thisUndefined(itok.name);
 						}
 						else{
-							if(includeproc()==-1)thisundefined(itok.name);
+							if(includeproc()==-1)thisUndefined(itok.name);
 						}
 						ptr->rectok=tk_proc;
 						ptr->count++;
@@ -2812,8 +2814,8 @@ void docals(struct idrec *ptr)
 					itok.flag=ptr->flag;
 					itok.post=ptr->recpost;
 					strcpy(itok.name,ptr->recid);
-					if(ptr->newid==NULL)string[0]=0;
-					else strcpy((char *)string,(char *)ptr->newid);
+					if(ptr->newid==NULL)String[0]=0;
+					else strcpy((char *)String,(char *)ptr->newid);
 					itok.rm=ptr->recrm;
 					itok.size=ptr->recsize;
 					itok.rec=ptr;
@@ -2832,7 +2834,7 @@ void docalls2()
 {
 //	puts("start docalls2");
 	docals(treestart);
-	for(unsigned int i=0;i<totalmodule;i++)docals((startfileinfo+i)->stlist);
+	for (unsigned int i = 0; i < totalmodule; i++)docals(FilesInfo[i].stlist);
 //	puts("end docalls2");
 }
 
@@ -2855,8 +2857,8 @@ int numdinproc;
 				itok.number=ptr->recnumber;
 				itok.flag=ptr->flag;
 				strcpy(itok.name,ptr->recid);
-				if(ptr->newid==NULL)string[0]=0;
-				else strcpy((char *)string,(char *)ptr->newid);
+				if(ptr->newid==NULL)String[0]=0;
+				else strcpy((char *)String,(char *)ptr->newid);
 				itok.rm=ptr->recrm;
 				itok.size=ptr->recsize;
 				itok.rec=ptr;
@@ -2923,8 +2925,8 @@ ITOK oitok;	//18.08.04 19:07
 	otok2=tok2;
 	oitok=itok;	//18.08.04 19:07
 	oinput=input;
-	string[0]=0;
-	if(ptr->newid)strcpy((char *)string,ptr->newid);
+	String[0]=0;
+	if(ptr->newid)strcpy((char *)String,ptr->newid);
 	itok.type=ptr->type;
 	itok.npointr=ptr->npointr;
 	itok.rm=ptr->recrm;
@@ -2939,7 +2941,7 @@ ITOK oitok;	//18.08.04 19:07
 	ptr->count++;
 	if(itok.segm==DYNAMIC)AddDynamicList(ptr);
 	tok2=tk_openbracket;
-	input="();";
+	input = (unsigned char *) "();";
 	inptr2=1;
 	cha2='(';
 	endinptr=3;
@@ -2984,7 +2986,7 @@ structteg *tteg;
 	tteg=(structteg *)ptrs->newid;
 	sprintf(name,"%s~",tteg->name);
 	if((bazael=FindClassEl(tteg,(unsigned char *)name,&addofs,NULL))==NULL){
-		if((bazael=FindOneDestr(tteg))==NULL)preerror("destructor not defined");
+		if((bazael=FindOneDestr(tteg))==NULL)prError("destructor not defined");
 	}
 	if(ptrs->recsize)CreatParamDestr(ptrs);
 	else structadr.sib=THIS_ZEROSIZE;
@@ -3008,7 +3010,7 @@ odbg=dbg;
 	otok=tok;
 	otok2=tok2;
 	oinput=input;
-	input=buf;
+	input = (unsigned char *) buf;
 	inptr2=1;
 	cha2='_';
 	tok=tk_openbrace;
@@ -3045,8 +3047,8 @@ er:
 	structadr.sib=THIS_NEW;
 	structadr.number=tteg->size;
 	ptr=bazael->rec;
-	string[0]=0;
-	if(ptr->newid!=NULL)strcpy((char *)string,ptr->newid);
+	String[0]=0;
+	if(ptr->newid!=NULL)strcpy((char *)String,ptr->newid);
 	itok.type=ptr->type;
 	itok.npointr=ptr->npointr;
 	itok.rm=ptr->recrm;
@@ -3061,7 +3063,7 @@ er:
 	ptr->count++;
 	if(itok.segm==DYNAMIC)AddDynamicList(ptr);
 //	docommand();
-	if(dbg)AddLine();
+	if(dbg)addLine();
 	int oflag=current_proc_type;
 	current_proc_type&=~f_static;
 	if(tok==tk_proc)doanyproc();
@@ -3145,7 +3147,7 @@ char buf[128];
 				op(0x58);
 			}
 		}
-		input="__delete((E)AX);}";
+		input = (unsigned char *) "__delete((E)AX);}";
 		inptr2=1;
 		cha2='_';
 		endinptr=strlen((char *)input);
@@ -3371,7 +3373,7 @@ struct localrec *ptr;
 					}
 				}
 				else if(!(ptr->rec.rectok==tk_locallabel||ptr->rec.rectok==tk_number)){
-					internalerror("Bad *tok4 value in searchlocals");
+					internalError("Bad *tok4 value in searchlocals");
 				}
 				itok4->size=ptr->rec.recsize;
 				itok4->flag=ptr->rec.flag;
@@ -3510,7 +3512,7 @@ structteg *subteg=NULL;
 notnum:
 //new!!!
 			if(displaytokerrors){
-				if(itok4->segm==USEDSTR)preerror("only once possible use variable an index structure");
+				if(itok4->segm==USEDSTR)prError("only once possible use variable an index structure");
 
 //				if(itok4->segm==USEDSTR&&displaytokerrors)preerror("only once possible use variable an index structure");
 				itok4->segm=USEDSTR;
@@ -3549,12 +3551,12 @@ notnum:
 		do{
 			tokscan(&i,&cstok,(unsigned char *)cstring);
 //			puts(cstok.name);
-			if(cha=='.')searchtree2(definestart,&cstok,&i,(unsigned char *)cstring);
+			if(cha=='.')searchTree2(definestart, &cstok, &i, (unsigned char *) cstring);
 		}while(i==tk_endline);
 		whitespace();
 		if(cha==':'){
 			nextchar();
-			if(cha!=':')expectederror("::");
+			if(cha!=':')expectedError("::");
 			nextchar();
 			if((subteg=FindTeg(TRUE,cstok.name))==NULL&&displaytokerrors)undefclass(cstok.name);
 			tokscan(&i,&cstok,(unsigned char *)cstring);
@@ -3683,7 +3685,7 @@ notnum:
 			if(displaytokerrors){
 				ptr->count++;
 				if(*tok4==tk_proc&&itok4->segm==DYNAMIC)AddDynamicList(ptr);
-				if(*tok4!=tk_proc&&*tok4!=tk_undefproc&&*tok4!=tk_declare)thisundefined(ptr->recid,FALSE);
+				if(*tok4!=tk_proc&&*tok4!=tk_undefproc&&*tok4!=tk_declare)thisUndefined(ptr->recid, FALSE);
 			}
 			return;
 		}
@@ -3759,11 +3761,11 @@ ITOK cstok;
 //	nextchar();
 	cstok.name[0]=0;
 //	if(displaytokerrors)puts("start sizeof");
-	tokscan(&i,&cstok,string2);
+	tokscan(&i,&cstok,String2);
 //	if(displaytokerrors)printf("tok=%d findoffset=%d %s\n",i,findofset,cstok.name);
 	if(i==tk_dblcolon&&numblocks){
 		skiplocals=TRUE;
-		tokscan(&i,&cstok,string2);
+		tokscan(&i,&cstok,String2);
 	}
 	if(strcmp(cstok.name,"__CODESIZE")==0){
 		itok4->post=CODE_SIZE+am32;
@@ -3819,13 +3821,13 @@ ITOK cstok;
 			case tk_qwordvar:
 			case tk_doublevar:
 			case tk_interruptproc:
-				if(cstok.size==0)if(displaytokerrors)preerror("unknown size");
+				if(cstok.size==0)if(displaytokerrors)prError("unknown size");
 				itok4->number=cstok.size;
 				break;
 			default:
 				if((tteg=FindTeg(FALSE,cstok.name))!=NULL||(tteg=FindTeg(TRUE,cstok.name))!=NULL){
 					if(cha=='.'){
-						dostructvar2(&i,itok4,tteg,string2);
+						dostructvar2(&i,itok4,tteg,String2);
 						itok4->number=itok4->size;
 						if(bufrm){
 							free(bufrm);
@@ -3836,17 +3838,18 @@ ITOK cstok;
 					itok4->flag=0;
 					break;
 				}
-				if(strcmp("file",(char *)string2)==0){
+				if(strcmp("file",(char *)String2)==0){
 					displaytokerrors=1;
-					tokscan(&i,&cstok,string2);
+					tokscan(&i,&cstok,String2);
 					if(i==tk_string){
-						struct stat statbuf;
-						if(stat((char *)string3,&statbuf)!=0)unableopenfile((char *)string3);
-						else itok4->number=statbuf.st_size;
+						auto F = fs::path((const char *) string3);
+						if (!(fs::exists(F) && fs::is_regular_file(F)))
+							unableToOpenFile(F);
+						else itok4->number = fs::file_size(F);
 					}
 					else stringexpected();
 				}
-				else if(displaytokerrors)preerror("illegal use of sizeof");
+				else if(displaytokerrors)prError("illegal use of sizeof");
 				break;
 		}
 	}
@@ -3992,7 +3995,7 @@ UNDEFOFF *curptr;
 			(curptr->pos+curptr->num)->ofs=segm==0?outptr:outptrdata;
 			(curptr->pos+curptr->num)->dataseg=(unsigned char)segm;
 			(curptr->pos+curptr->num)->line=linenumber;
-			(curptr->pos+curptr->num)->file=currentfileinfo;
+			(curptr->pos+curptr->num)->file=CurrentFileInfoNum;
 			curptr->num++;
 			return;
 		}
@@ -4006,7 +4009,7 @@ UNDEFOFF *curptr;
 	curptr->pos->ofs=segm==0?outptr:outptrdata;
 	curptr->pos->dataseg=(unsigned char)segm;
 	curptr->pos->line=linenumber;
-	curptr->pos->file=currentfileinfo;
+	curptr->pos->file=CurrentFileInfoNum;
 }
 
 int CheckUseAsUndef(unsigned char *name)
@@ -4042,7 +4045,7 @@ int count=0;
 				if(base==DS&&dynamic_flag){	//было обращение к динамическим иниц. переменным
 					CheckPosts();
 					(postbuf+posts)->type=(unsigned short)(am32==0?DIN_VAR:DIN_VAR32);
-					(postbuf+posts)->num=(int)itok.rec;
+					(postbuf+posts)->num=(uintptr_t)itok.rec;
 					(postbuf+posts)->loc=ofs;
 				}
 				else{
@@ -4116,24 +4119,22 @@ UNDEFOFF *curptr;
 	return 0;
 }
 
-int GetDirective(char *str)
+int getDirective(const uint8_t *Str)
 {
 	int i;
-	i=FastSearch(dirlist,ofsdir,1,str);
+	i = fastSearch(dirlist, ofsdir, 1, Str);
 //	printf("i=%d %s\n",i,str);
-	if(i!=-1&&i<d_end1&&notdoneprestuff!=TRUE&&displaytokerrors!=0){
-		char buf[80];
-		sprintf(buf,"Too late to change %s",str);
-		preerror(buf);
+	if (i != -1 && i < d_end1 && notdoneprestuff != TRUE && displaytokerrors != 0) {
+		prError("Too late to change "s + std::string((const char *) Str));
 	}
 	return i;
 }
 
-int FastSearch(unsigned char *list,short *ofs,int type,char *str)
+int fastSearch(unsigned char *list, uint16_t *ofs, int type, const uint8_t *str)
 {
-	if((strlen(str)-1)>0){
+	if((strlen((const char *)str)-1)>0){
 short offs=-1;
-unsigned char c;
+		uint8_t c;
 		c=str[0];
 		switch(type){
 			case 0:
@@ -4154,7 +4155,7 @@ unsigned char c;
 		}
 //					if(type==0)printf("%s\n",str);
 		if(offs!=-1){
-			for(unsigned char *ii=(unsigned char *)(list+offs);;ii++){
+			for (auto *ii = (list + offs);; ii++) {
 				short types;
 				if((types=*(short *)&*ii)==-1)break;
 				ii+=2;
@@ -4210,7 +4211,7 @@ unsigned long num;
 	nexttok();
 	if(tok!=tk_number)numexpected();
 	num=doconstdwordmath();
-	if(num>(unsigned int)(size*8))preerror("Bit field to large");
+	if(num>(unsigned int)(size*8))prError("Bit field to large");
 	return num;
 }
 
@@ -4260,7 +4261,8 @@ struct structteg *CreatTeg(int Global,int useunion,int noname)	//создать 
 struct structteg *newteg,*tteg;
 struct elementteg *bazael;
 int ssize=0,numel=0,localtok,size,numt,nameid=FALSE,tsize;
-int bitofs=0,bitsize=0,i,type;
+int bitofs=0,bitsize=0,i;
+TypeValue Type;
 int isdestr=FALSE,isbase=0;
 int unionsize=0;
 	newteg=(struct structteg *)MALLOC(sizeof(struct structteg));
@@ -4284,8 +4286,8 @@ int unionsize=0;
 				else bazael=(struct elementteg *)REALLOC(bazael,sizeof(struct elementteg)*(numel+1));
 				for(i=0;i<numel;i++){
 					if(strcmp((bazael+i)->name,itok.name)==0){
-						sprintf((char *)string,"Dublicate base class '%s'",itok.name);
-						preerror((char *)string);
+						sprintf((char *)String,"Dublicate base class '%s'",itok.name);
+						prError((char *) String);
 					}
 				}
 				strcpy((bazael+numel)->name,itok.name);
@@ -4301,7 +4303,7 @@ int unionsize=0;
 			if(tok==tk_openbrace)break;
 			expecting(tk_camma);
 		}while(tok!=tk_eof);
-		if(useunion)preerror("union cannot have a base type");
+		if(useunion)prError("union cannot have a base type");
 	}
 	expecting(tk_openbrace);
 	while(tok!=tk_closebrace&&tok!=tk_eof){
@@ -4309,7 +4311,7 @@ int unionsize=0;
 		int utestInitVar=FALSE;
 		orm=tokens;
 		npointr=oflag=0;
-		type=variable;
+		Type = TypeValue::VARIABLE;
 		if(tok==tk_tilda){
 			newteg->flag|=fs_destructor;
 			oflag|=fs_destructor;
@@ -4500,7 +4502,7 @@ dproc2:
 								npointr++;
 								nexttok();
 							}
-							type=pointer;
+							Type = TypeValue::POINTER;
 						}
 						for(i=0;i<numel;i++){
 							if(strcmp((bazael+i)->name,itok.name)==0)idalreadydefined();
@@ -4512,7 +4514,7 @@ dproc2:
 							if(orm==tokens)orm=am32==FALSE?tk_word:tk_dword;
 						}
 						nexttok();
-						if(tok==tk_openbracket||type==pointer)goto dproc;
+						if (tok == tk_openbracket || Type == TypeValue::POINTER)goto dproc;
 						if(npointr){
 							idrec *nrec;
 							nrec=(bazael+numel)->rec=(idrec *)MALLOC(sizeof(idrec));
@@ -4521,7 +4523,7 @@ dproc2:
 							nrec->npointr=(unsigned short)npointr;
 							nrec->flag=oflag;
 							nrec->line=linenumber;
-							nrec->file=currentfileinfo;
+							nrec->file=CurrentFileInfoNum;
 					 		nrec->rectok=(bazael+numel)->tok=tk_pointer;
 							nrec->type=(unsigned short)orm;
 							tsize=2;
@@ -4548,7 +4550,7 @@ dproc2:
 					nexttok();
 					if(tok==tk_colon){
 						numt=getsizebit(size);
-						if(numt==0)preerror("Bit fields must contain at least one bit");
+						if(numt==0)prError("Bit fields must contain at least one bit");
 						(bazael+numel)->ofs=ssize;
 						(bazael+numel)->tok=tk_bits;
 						(bazael+numel)->bit.siz=numt;
@@ -4561,7 +4563,7 @@ dproc2:
 dproc:
 						idrec *nrec;
 						param[0]=0;
-						if(type==pointer)expecting(tk_closebracket);
+						if (Type == TypeValue::POINTER)expecting(tk_closebracket);
 						else{
 							if(npointr){
 								orm=am32==FALSE?tk_word:tk_dword;
@@ -4577,13 +4579,14 @@ dproc:
 						strcpy(nrec->recid,(bazael+numel)->name);//скопир название
 						nrec->newid=NULL;
 //						printf("name=%s param=%s\n",nrec->recid,param);
-						if(param[0]!=0)nrec->newid=BackString((char *)param);
+						if (param[0] != 0)
+							nrec->newid = strdup((char *) param);
 						if(orm==tokens)orm=am32==FALSE?tk_word:tk_dword;//tk_void;
 						nrec->npointr=(unsigned short)npointr;
 						nrec->recrm=orm;
 						nrec->flag=oflag;
 						nrec->line=linenumber;
-						nrec->file=currentfileinfo;
+						nrec->file=CurrentFileInfoNum;
 						nrec->count=0;
 						nrec->recpost=0;//itok.post;
 						nrec->recsize=0;//itok.size;
@@ -4642,7 +4645,7 @@ endelteg:
 							nrec=(bazael+numel)->rec=(idrec *)MALLOC(sizeof(idrec));
 							strcpy(nrec->recid,(bazael+numel)->name);//скопир название
 							nrec->line=linenumber;
-							nrec->file=currentfileinfo;
+							nrec->file=CurrentFileInfoNum;
 							nrec->count=0;
 							nrec->sbuf=NULL;
 							nrec->recsize=tsize*numt;
@@ -4688,7 +4691,7 @@ endelteg:
 								else{
 									if(alignword)alignersize+=AlignCD(DS,tsize);
 									nrec->recnumber=outptrdata;
-									initglobalvar(orm,numt,tsize,variable);
+									initGlobalVar(orm, numt, tsize, TypeValue::VARIABLE);
 									datasize+=tsize*numt;
 								}
 							}
@@ -4744,7 +4747,7 @@ idrec *nrec;
 			oinptr2=inptr2;
 			ocha2=cha2;
 			oinput=input;
-			string[0]=0;
+			String[0]=0;
 			newteg->flag|=fs_destructor;
 			strcpy(itok.name,newteg->name);
 			if(CidOrID()==tk_ID)oflag=tp_fastcall;
@@ -4759,7 +4762,7 @@ idrec *nrec;
 			itok.rm=nrec->recrm=tk_void;
 			itok.flag=nrec->flag=fs_destructor|oflag|f_classproc;
 			nrec->line=linenumber;
-			nrec->file=currentfileinfo;
+			nrec->file=CurrentFileInfoNum;
 			nrec->count=0;
 			itok.post=nrec->recpost=0;
 			itok.size=nrec->recsize=0;
@@ -4773,7 +4776,7 @@ idrec *nrec;
 			itok.number=nrec->recnumber=secondcallnum++;
 			(bazael+numel)->numel=1;
 			numel++;
-			input=buf;
+			input = (unsigned char *) buf;
 			inptr2=1;
 			cha2='(';
 			endinptr=strlen(buf);
@@ -4854,7 +4857,8 @@ unsigned int loop=0;
 		case tk_proc:
 			loop--;
 			break;
-		default: internalerror("Bad type variable");
+		default:
+			internalError("Bad type variable");
 	}
 	return loop;
 }
@@ -4999,7 +5003,7 @@ strl3:
 					else i=(elem+ttype)->numel;
 					tnumel=0;
 					for(;tnumel<i;tnumel++){
-						opd(string[tnumel]);
+						opd(String[tnumel]);
 					}
 					if(tnumel<(elem+ttype)->numel){
 						switch(itok.flag&3){
@@ -5069,7 +5073,7 @@ unsigned int loop=0;
 			break;
 		case tk_from:	//считать файл с данными
 			nexttok();
-			loop=dofrom();
+			loop= doFrom();
 			for(;loop<tteg->size*numel;loop++)opd(aligner);
 			nexttok();
 			break;
@@ -5083,7 +5087,7 @@ unsigned int loop=0;
 			loop=Fill2Teg(numel,tteg);
 			for(;loop<tteg->size*numel;loop++)opd(aligner);
 			if(tok!=tk_closebrace){
-				preerror("extra parameter at initialization of structure");
+				prError("extra parameter at initialization of structure");
 				while(tok!=tk_closebrace&&tok!=tk_eof)nexttok();
 			}
 			nexttok();
@@ -5128,7 +5132,7 @@ unsigned int loop;
 				newrec->rectok=tk_structvar;
 				newrec->flag=flag|tteg->flag;
 				newrec->line=linenumber;
-				newrec->file=currentfileinfo;
+				newrec->file=CurrentFileInfoNum;
 				newrec->type=tp_gvar;
 				if(FixUp)newrec->flag|=f_reloc;
 				numel=1;
@@ -5291,7 +5295,7 @@ unsigned long size=0;
 		if(tok!=tk_ID&&tok!=tk_id)idalreadydefined();
 		else{	//инициализировать структуру
 			numel=1;
-			newrec=addlocalvar((char *)string,tk_structvar,localsize);
+			newrec=addlocalvar((char *)String,tk_structvar,localsize);
 			newrec->rec.newid=(char *)tteg;
 			newrec->rec.flag=tteg->flag;
 			newrec->rec.type=tp_localvar;
@@ -5315,7 +5319,7 @@ unsigned long size=0;
 //					newrec->rec.recsize=tteg->size;
 //					newrec->rec.recrm=numel;
 					newrec->rec.line=linenumber;
-					newrec->rec.file=currentfileinfo;
+					newrec->rec.file=CurrentFileInfoNum;
 					newrec->rec.npointr=0;
 					newrec->rec.sbuf=dynamic_var();
 					newrec->rec.recsib=newrec->rec.type=tp_gvar;
@@ -5398,7 +5402,7 @@ struct structteg *tteg;
 int numel;
 int usenumstr;
 SINFO rstr;
-char *ofsst=NULL;
+	std::string ofsst;
 int oneloop=FALSE;
 unsigned long hnum;
 unsigned int num,sized=0,sign=FALSE;
@@ -5510,7 +5514,7 @@ int starts=0;	//смещение заполнения в структуре
 				SINFO wstr;
 				wstr=strinf;
 				strinf.bufstr=NULL;
-				if((retreg=CheckIDZReg(itok.name,AX,razr=GetVarSize(tok)))!=NOINREG){
+				if((retreg= checkIDZReg(itok.name, AX, razr = GetVarSize(tok)))!=NOINREG){
 					GenRegToReg(AX,retreg,razr);
 					IDZToReg(itok.name,AX,razr);
 					if(bufrm){
@@ -5739,7 +5743,7 @@ fillstr:
 				}
 				else{
 					warningreg(regs[am32][DI]);
-					getintoreg_32(DI,(am32+1)*2,0,&ofsst);
+					getintoreg_32(DI, (am32 + 1) * 2, 0, ofsst);
 					if(num<=2||(num<=4&&(!optimizespeed))){
 						for(unsigned int i=0;i<num;i++){
 							if(sized==1)stosb();
@@ -5845,7 +5849,7 @@ struct idrec *ptrs;
 				warningreg(regs[am32][SI]);
 ///!new
 //				printf("tok=%d rm=%08X %s",tok,itok.rm,itok.name);
-				getintoreg_32(SI,(am32+1)*2,0,&ofsst);
+				getintoreg_32(SI, (am32 + 1) * 2, 0, ofsst);
 				ClearReg(SI);
 				num=tteg->size;
 				starts=0;
@@ -5893,7 +5897,7 @@ struct idrec *ptrs;
 ///!new
 				usenumstr2=DS;
 				if(poststr2==LOCAL)usenumstr2=SS;
-				getintoreg_32(DI,(am32+1)*2,0,&ofsst);
+				getintoreg_32(DI, (am32 + 1) * 2, 0, ofsst);
 				num=num2;
 				sized=1;
 				if(optimizespeed){
@@ -5943,7 +5947,6 @@ struct idrec *ptrs;
 		nexttok();
 		errstruct();
 	}
-	if(ofsst)free(ofsst);
 }
 
 int SaveStruct(int size,idrec *newrec)
@@ -5964,12 +5967,10 @@ int i=0;
 	return FALSE;
 }
 
-int CheckAsmName(char *name)
+int checkAsmName(const uint8_t *Name)
 {
-char buf[IDLENGTH];
-	strcpy(buf,name);
-	strupr(buf);
-	return FastSearch((unsigned char *)asmMnem,ofsmnem,0,buf);
+	std::string UName = boost::algorithm::to_upper_copy(std::string((const char *) Name));
+	return fastSearch(asmMnem, ofsmnem, 0, (const uint8_t *) UName.c_str());
 }
 
 void FastTok(int mode,int *tok4,ITOK *itok4)
@@ -6062,7 +6063,7 @@ int next=1;
 //			tokscan(&tok,&itok,string);
 			FastTok(1,tok4,itok4);
 //			if((itok.number=GetDirective((char *)string))!=-1){
-			if(*tok4==tk_id&&(itok4->number=GetDirective(itok4->name))!=-1){
+			if (*tok4 == tk_id && (itok4->number = getDirective((const uint8_t *) itok4->name)) != -1) {
 				*tok4=tk_question;
 			}
 			return;
@@ -6163,7 +6164,7 @@ unsigned long long scannumber(int *rm)
 {
 int useme=0,binnum=0;
 unsigned char c;
-unsigned long long number=0;
+	uint64_t number = 0;
 	*rm=tokens;
 	for(int i=inptr;;i++){
 		c=input[i];
@@ -6273,7 +6274,7 @@ cbinnum:
 	if(*rm==tokens){
 		if(number<256)*rm=tk_byte;
 		else if(number<65536)*rm=tk_word;
-		else if(number<0x100000000I64)*rm=tk_dword;
+		else if (number < 0x100000000)*rm = tk_dword;
 		else *rm=tk_qword;
 	}
 	return number;
@@ -6290,7 +6291,7 @@ int number,tok,rm;
 	do{
 		FastTok(1,tok4,itok4);
 		strcpy((char *)string4,itok4->name);
-		searchtree2(definestart,itok4,tok4,string4);
+		searchTree2(definestart, itok4, tok4, string4);
 	}while(*tok4==tk_endline);
 ///////////////////
 //	printf("tok=%d %s\n",*tok4,itok4->name);
@@ -6362,12 +6363,10 @@ int rm;
 	return rm;
 }
 
-int CheckResName(char *name)
+int checkResName(const char *Name)
 {
-char buf[IDLENGTH];
-	strcpy(buf,name);
-	strlwr(buf);
-	return FastSearch((unsigned char *)resMnem,ofsres,3,buf);
+	std::string LName = boost::algorithm::to_lower_copy(std::string(Name));
+	return fastSearch((unsigned char *) resMnem, ofsres, 3, (const uint8_t *)LName.c_str());
 }
 
 int GetTokVar2()
@@ -6379,7 +6378,7 @@ unsigned int oinptr=inptr;
 int oline=linenumber;
 char odisplay=displaytokerrors;
 	displaytokerrors=0;
-	tokscan(&i,&cstok,string2);
+	tokscan(&i,&cstok,String2);
 	displaytokerrors=odisplay;
 	switch(i){
 		case tk_number:
@@ -6475,7 +6474,7 @@ int otok;
 			return FALSE;
 	}
 	otok=tok;
-	searchtree2(definestart,&itok,&tok,string);
+	searchTree2(definestart, &itok, &tok, String);
 	if(tok==otok)return FALSE;
 	return TRUE;
 }

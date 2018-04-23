@@ -1,5 +1,9 @@
 #define _SWITCH_
 
+#include <string>
+using namespace std::string_literals;
+#include <boost/algorithm/string.hpp>
+
 #include "tok.h"
 
 extern int lastcommand;	//последний оператор в блоке
@@ -17,7 +21,7 @@ void CheckJmpSW(int line,int endsw,int startsw,int shortjmp,char *mes)
 {
 int size=startsw-endsw;
 	if(shortjmp==FALSE){
-		if((unsigned int)size<128)warningjmp(mes,line);
+		if((unsigned int)size<128)warningJmp(mes, line);
 		if(am32==FALSE)*(unsigned short *)&output[endsw-2]=(unsigned short)size;
 		else *(unsigned long *)&output[endsw-4]=(unsigned long)size;
 	}
@@ -121,7 +125,7 @@ int retcode=TRUE;
 					case tk_case:
 					case tk_CASE:
 						if(i==1){
-							if(stricmp(itok.name,"case")==0){
+							if(boost::iequals(itok.name,"case"s)){
 								inptr2=inptr;
 								cha2=cha;
 								linenum2=linenumber;
@@ -129,14 +133,14 @@ int retcode=TRUE;
 								nexttok();
 								if(tok==tk_number||(tok==tk_minus&&tok2==tk_number)){
 									if(*numcase==MAXCASE){
-										preerror("Many to use <case>");
+										prError("Many to use <case>");
 										retcode=FALSE;
 									}
 									else{
 										unsigned long val=doconstlongmath();
 										for(int j=0;j<*numcase;j++){
 											if(val==(caseinf+j)->value){
-												preerror("Duplicate 'case'");
+												prError("Duplicate 'case'");
 												retcode=FALSE;
 												break;
 											}
@@ -148,7 +152,7 @@ int retcode=TRUE;
 											val=doconstlongmath();
 											numexpandcase+=val-(caseinf+*numcase)->value-1;
 											if(val<(caseinf+*numcase)->value){
-												preerror("The first value 'case' should be smaller");
+												prError("The first value 'case' should be smaller");
 												retcode=FALSE;
 											}
 											*numcase=*numcase+1;
@@ -201,7 +205,7 @@ unsigned int endsw,defaul=0,tokr,endsw2=0;
 int shortjmp=(tok==tk_switch?FALSE:TRUE);
 int sline=linenumber;
 REGISTERSTAT *bakregstat,*changeregstat;
-char *ofsstr=NULL;
+	std::string ofsstr;
 //new
 COM_MOD *startmod=cur_mod;
 unsigned char oinline=useinline;
@@ -402,8 +406,10 @@ unsigned oaddESP=addESP;
 			reg=AX;
 			reg0=idxregs[1];
 			if((!am32)||(am32&&(!((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&tok2==tk_closebracket)))){
-				if(tokr==r8)doalmath(signflag,&ofsstr);
-				else do_e_axmath(signflag,tokr,&ofsstr);
+				if (tokr == r8)
+					doalmath(signflag, ofsstr);
+				else
+					do_e_axmath(signflag, tokr, ofsstr);
 			}
 			else{
 				reg=itok.number;
@@ -417,19 +423,23 @@ unsigned oaddESP=addESP;
 		else if((tok==tk_beg||tok==tk_reg||tok==tk_reg32)&&tok2==tk_closebracket){
 			if(reg==AX){
 				reg=itok.number;
-				if(mode&&am32)getintoreg_32(reg,r32,0,&ofsstr);
-				else nexttok();
+				if (mode && am32)
+					getintoreg_32(reg, r32, 0, ofsstr);
+				else
+					nexttok();
 				ClearReg(AX);
 			}
 			else{
-				getintoreg_32(BX,r16,0,&ofsstr);
+				getintoreg_32(BX, r16, 0, ofsstr);
 				ClearReg(BX);
 				warningreg("BX");
 			}
 		}
 		else{
-			if(tokr==r8)doalmath(signflag,&ofsstr);
-			else do_e_axmath(signflag,tokr,&ofsstr);
+			if (tokr == r8)
+				doalmath(signflag, ofsstr);
+			else
+				do_e_axmath(signflag, tokr, ofsstr);
 			if(reg!=AX){
 				ClearReg(BX);
 				if(tokr==r8)outword(0xB4);	//mov ah,0
@@ -726,7 +736,7 @@ unsigned oaddESP=addESP;
 						CheckJmpSW(sline,endsw,outptr,shortjmp,mesSWITCH);
 						if(endsw2)CheckJmpSW(sline,endsw2,outptr,shortjmp,mesSWITCH);
 					}
-					if(defaul)preerror("Duplicate 'default'");
+					if(defaul)prError("Duplicate 'default'");
 					defaul=outptr;
 					nexttok();
 					expecting(tk_colon);	//пров на : и чтение следующ tok

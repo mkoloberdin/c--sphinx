@@ -13,7 +13,7 @@ unsigned short h,l;
 
 int MakeBin32()
 {
-	hout=CreateOutPut(outext,"wb");
+	hout= createOutPut(outext, "wb");
 	if(fwrite(output,outptr,1,hout)!=1){
 		ErrWrite();
 		fclose(hout);
@@ -27,9 +27,9 @@ unsigned int EntryParamStr()
 {
 ITOK btok;
 int bb=tk_id;
-unsigned char *buf="__bufcomstr";
+	unsigned char *buf = (unsigned char *) "__bufcomstr";
 	btok.number=0;
-	searchtree(&btok,&bb,buf);
+	searchTree(&btok, &bb, buf);
 	if(bb==tk_id)btok.number=0;
 	else{
 		btok.number+=outptrdata;
@@ -41,7 +41,7 @@ unsigned char *buf="__bufcomstr";
 int MakeMEOS()
 {
 MEOSheader hdr;
-	hout=CreateOutPut(outext,"wb");
+	hout= createOutPut(outext, "wb");
 	strcpy((char *)hdr.sign,"MENUET01");
 	hdr.vers=1;
 	hdr.start=EntryPoint();
@@ -70,12 +70,12 @@ int headerofs;
 int headsize=sizeof(LE_Header);
 unsigned long *fpto;
 int sizeb;
-	CreatStub(stubfile);
+	createStub(StubFile);
 	memset(&hdr,0,sizeof(LE_Header));
 #ifdef _WC_
 	hdr.Signature='EL';
 #else
-	hdr.Signature='LE';
+	hdr.Signature='L' + 'E' * 256;
 #endif
 	hdr.CPU_Type=i80386;
 	hdr.Target_OS=1;
@@ -122,11 +122,11 @@ errwrite:
 	free(pmt);
 	hdr.Resource_Table_Offset=hdr.Resident_Names_Table_Offset=headsize+=sizeb;
 
-	i=strlen(rawfilename);
-	string2[0]=(unsigned char)i;
-	strcpy((char *)&string2[1],rawfilename);
-	*(long *)&string2[i+2]=0;
-	if(fwrite(string2,i+5,1,hout)!=1)goto errwrite;
+	i = RawFileName.size();
+	String2[0]=(unsigned char)i;
+	strcpy((char *) &String2[1], RawFileName.c_str());
+	*(long *)&String2[i+2]=0;
+	if(fwrite(String2,i+5,1,hout)!=1)goto errwrite;
 
 	hdr.Entry_Table_Offset=headsize+=i+4;
 	headsize++;
@@ -150,22 +150,22 @@ int sizefixpage=0;
 	    ((postbuf+j)->type>=POST_VAR32&&(postbuf+j)->type<=FIX_CODE32))&&
 			(postbuf+j)->loc>=startblc&&(postbuf+j)->loc<(startblc+4096)){
 				int sizerec;
-				string2[0]=7;
-				*(unsigned short *)&string2[2]=(unsigned short)((postbuf+j)->loc-startblc);
-				string2[4]=1;
+				String2[0]=7;
+				*(unsigned short *)&String2[2]=(unsigned short)((postbuf+j)->loc-startblc);
+				String2[4]=1;
 				unsigned int val=*(unsigned long *)&output[(postbuf+j)->loc];
 				if(val<65536){
-					string2[1]=0;
-					*(unsigned short *)&string2[5]=(unsigned short)val;
+					String2[1]=0;
+					*(unsigned short *)&String2[5]=(unsigned short)val;
 					sizerec=7;
 				}
 				else{
-					string2[1]=0x10;
-					*(unsigned long *)&string2[5]=val;
+					String2[1]=0x10;
+					*(unsigned long *)&String2[5]=val;
 					sizerec=9;
 				}
 				sizefixpage+=sizerec;
-				if(fwrite(string2,sizerec,1,hout)!=1)goto errwrite;
+				if(fwrite(String2,sizerec,1,hout)!=1)goto errwrite;
 			}
 			fpto[i+1]=sizefixpage;
 		}
@@ -175,8 +175,8 @@ int sizefixpage=0;
 //Imported_Procedure_Name_Table
 	hdr.Imported_Module_Names_Table_Offset=
 			hdr.Imported_Procedure_Name_Table_Offset=headsize;
-	string2[0]=0;
-	if(fwrite(string2,1,1,hout)!=1)goto errwrite;
+	String2[0]=0;
+	if(fwrite(String2,1,1,hout)!=1)goto errwrite;
 	headsize++;
 
 

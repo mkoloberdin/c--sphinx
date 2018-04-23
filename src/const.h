@@ -1,3 +1,6 @@
+#ifndef CMM_SPHINX_CONST_H
+#define CMM_SPHINX_CONST_H
+
 #define	FALSE		0
 #define	TRUE		1
 #define	LOCAL		-1
@@ -209,8 +212,10 @@ enum{
 #define	DR7		7
 
 //переменная, указатель, дальний указатель,сегментный указатель.
-#define	variable	0
-#define	pointer		1
+enum class TypeValue {
+	VARIABLE = 0,
+	POINTER = 1
+};
 //#define	farpointer	2
 
 // define exit codes
@@ -300,8 +305,8 @@ FIX_CODE_ADD,
 //DATABLOCK_STRING32	// 27
 };
 
-#define POINTER 0x8000
-#define NOTPOINTER (~POINTER)
+#define TOK_POINTER 0x8000
+#define TOK_NOTPOINTER (~TOK_POINTER)
 
 // format of output file
 #define	file_exe	0
@@ -511,3 +516,4 @@ enum{
 	p66
 };
 
+#endif // CMM_SPHINX_CONST_H

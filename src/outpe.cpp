@@ -9,7 +9,7 @@
 #define SIZESTUB 96
 #define STRVERS 0x20	//смещение текста с номером версии
 
-char stub[]={0x4D,0x5A,0x50,0x00,0x02,0x00,0x00,0x00,
+unsigned char stub[]={0x4D,0x5A,0x50,0x00,0x02,0x00,0x00,0x00,
              0x04,0x00,0x0F,0x00,0xFF,0xFF,0x00,0x00,
 						 0xB8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
              0x40,0x00,0x1A,0x00,0x00,0x00,0x00,0x00,
@@ -235,9 +235,9 @@ unsigned int resnum=0;	//номер секции ресурсов
 					if((startimportname%2)==1)importblock[startimportname++]=0;
 					*(long *)&importblock[sn1]=startsec+startimportname;
 					if(shortimport==0)*(long *)&importblock[sn1+(numdll+numapi)*4]=startsec+startimportname;
-					if(rec->recsize!=-1)sprintf((char *)string2,"%s@%u",rec->recid,rec->recsize);
-					else strcpy((char *)string2,rec->recid);
-					lenn=strlen((char *)string2)+1;
+					if(rec->recsize!=-1)sprintf((char *)String2,"%s@%u",rec->recid,rec->recsize);
+					else strcpy((char *)String2,rec->recid);
+					lenn=strlen((char *)String2)+1;
 					if((lenn+startimportname+4)>=sizeimport){
 						sizeimport+=FILEALIGN;
 						importblock=(char *)REALLOC(importblock,sizeimport);
@@ -245,7 +245,7 @@ unsigned int resnum=0;	//номер секции ресурсов
 					}
 					*(short *)&importblock[startimportname]=0;
 					startimportname+=2;
-					strcpy(&importblock[startimportname],(char *)string2);
+					strcpy(&importblock[startimportname],(char *)String2);
 					startimportname+=lenn;
 				}
 				sn1+=4;
@@ -284,18 +284,18 @@ unsigned int resnum=0;	//номер секции ресурсов
 		*(long *)&exportblock[32]=startsece+sizeof(EXPORT_TABLE)+numexport*4;//Name Pointers RVA
 		*(long *)&exportblock[36]=startsece+sizeof(EXPORT_TABLE)+numexport*8;//Ordinal Table RVA
 		char *oname;
-		strcpy((char *)string2,(char *)rawfilename);
-		oname=strrchr((char *)string2,'\\');
-		if(oname==NULL)oname=(char *)string2;
+		strcpy((char *) String2, RawFileName.c_str());
+		oname=strrchr((char *)String2,'\\');
+		if(oname==NULL)oname=(char *)String2;
 		else oname=oname+1;
-		sprintf((char *)string,"%s.%s",oname,outext);
-		unsigned int lenn=strlen((char *)string)+1;
+		sprintf((char *)String,"%s.%s",oname,outext);
+		unsigned int lenn=strlen((char *)String)+1;
 		if((lenn+startexportname+1)>=sizeexport){
 			sizeexport+=FILEALIGN;	//увеличить размер секции
 			exportblock=(char *)REALLOC(exportblock,sizeexport);
 			memset(exportblock+sizeexport-FILEALIGN,0,FILEALIGN);
 		}
-		strcpy(&exportblock[startexportname],(char *)string);
+		strcpy(&exportblock[startexportname],(char *)String);
 		startexportname+=lenn;
 		for(int i=0;i<numexport;i++){
 			*(long *)&exportblock[sizeof(EXPORT_TABLE)+i*4]=(lexport+i)->address+vsizeheader+sizebss;	//адреса функций
@@ -412,7 +412,7 @@ unsigned int resnum=0;	//номер секции ресурсов
 #ifdef _WC_
 	peheader->sign='EP';
 #else
-	peheader->sign='PE';
+	peheader->sign='P' + 'E' * 256;
 #endif
 	peheader->cpu=0x14c;//(chip>=4?(chip>=5?0x14e:0x14D):0x14c);
 //	peheader->date_time=0;
@@ -555,13 +555,13 @@ void CreatWinStub()
 {
 	if(!usestub){
 		sizestub=SIZESTUB2;
-		hout=CreateOutPut(outext,"wb");
+		hout= createOutPut(outext, "wb");
 		if(fwrite(stub2,SIZESTUB2,1,hout)!=1){
 			ErrWrite();
 			return;
 		}
 	}
-	else CreatStub(winstub);
+	else createStub(winstub);
 //подсчитать число секций
 	if(wbss){
 		if(postsize)numrs++;
@@ -580,13 +580,14 @@ void CreatWinStub()
 
 void ImportName(char *name)
 {
-FILE *infile;
-union{
-	PE_HEADER pe;
-	OBJECT_ENTRY obj;
-};
+	FILE *infile;
+	union U {
+		PE_HEADER pe;
+		OBJECT_ENTRY obj;
+	};
+	U u;
 unsigned long temp;
-unsigned long export;	//секция с експортом
+unsigned long export_sec;	//секция с експортом
 unsigned long numobj;	//число объектов
 unsigned long posdll;	//позиция секции в файле
 unsigned long nameadr;	//таблица адресов имен
@@ -596,7 +597,7 @@ unsigned int i,j;
 DLLLIST *newdll;
 APIPROC *listapi;
 	if((infile=fopen(name,"rb"))==NULL){
-		ErrOpenFile(name);
+        errOpenFile(name);
 		return;
 	}
 	fseek(infile,0x3C,SEEK_SET);
@@ -613,28 +614,28 @@ errread:
 		return;
 	}
 	fseek(infile,temp,SEEK_SET);
-	if(fread(&pe,sizeof(PE_HEADER),1,infile)!=1)goto errread;
-	if(pe.sign!=
+	if (fread(&u.pe, sizeof(PE_HEADER), 1, infile) != 1)goto errread;
+	if (u.pe.sign !=
 #ifdef _WC_
 			'EP'
 #else
-      'PE'
+		'P' + 'E' * 256
 #endif
 					){
 		fprintf(stderr,"For DLL support only format PE.\n");
 		fclose(infile);
 		return;
 	}
-	if((export=pe.exportRVA)==0){
+	if ((export_sec = u.pe.exportRVA) == 0) {
 		fprintf(stderr,"No export directory on %s.\n",name);
 		fclose(infile);
 		return;
 	}
-	numobj=pe.numobj;
-	temp=pe.objAlig;
+	numobj = u.pe.numobj;
+	temp = u.pe.objAlig;
 	while(numobj!=0){
-		if(fread(&obj,sizeof(OBJECT_ENTRY),1,infile)!=1)goto errread;
-		if((obj.sectionRVA+Align(obj.psize,temp))>export)break;
+		if (fread(&u.obj, sizeof(OBJECT_ENTRY), 1, infile) != 1)goto errread;
+		if ((u.obj.sectionRVA + Align(u.obj.psize, temp)) > export_sec)break;
 		numobj--;
 	}
 	if(numobj==0){
@@ -642,29 +643,29 @@ errread:
 		fclose(infile);
 		return;
 	}
-	posdll=obj.pOffset+export-obj.sectionRVA;
+	posdll = u.obj.pOffset + export_sec - u.obj.sectionRVA;
 	fseek(infile,posdll+24,SEEK_SET);
 	if(fread(&numobj,4,1,infile)!=1)goto errread;
 	fseek(infile,posdll+32,SEEK_SET);
 	if(fread(&nameadr,4,1,infile)!=1)goto errread;
 	if(fread(&ordinallist,4,1,infile)!=1)goto errread;
-	nameadr-=export;
-	ordinallist-=export;
+	nameadr-=export_sec;
+	ordinallist-=export_sec;
 	fseek(infile,posdll+12,SEEK_SET);
 	if(fread(&startname,4,1,infile)!=1)goto errread;
 	if(fread(&ordinalbase,4,1,infile)!=1)goto errread;
-	fseek(infile,posdll+startname-export,SEEK_SET);
+	fseek(infile,posdll+startname-export_sec,SEEK_SET);
 	j=0;
 	do{
-		if(fread(&string[j],1,1,infile)!=1)goto errread;
-	}while(string[j++]!=0);	//имя библиотеки
+		if(fread(&String[j],1,1,infile)!=1)goto errread;
+	}while(String[j++]!=0);	//имя библиотеки
 	newdll=FindDLL();
 	listapi=newdll->list;
 
 	for(i=0;i<numobj;i++){
 		fseek(infile,posdll+nameadr,SEEK_SET);
 		if(fread(&startname,4,1,infile)!=1)goto errread;
-		fseek(infile,posdll+startname-export,SEEK_SET);
+		fseek(infile,posdll+startname-export_sec,SEEK_SET);
 		itok.size=-1;
 		j=0;
 		unsigned char c;
@@ -681,12 +682,12 @@ errread:
 			j=0;
 			do{
 				if(fread(&c,1,1,infile)!=1)goto errread;
-				string[j++]=c;
+				String[j++]=c;
 			}while(isdigit(c));
-			itok.size=getnumber(string);
+			itok.size=getnumber(String);
 		}
 		tok=tk_id;
-		searchvar(itok.name);
+        searchVar(itok.name);
 		if(tok==tk_id){
 			fseek(infile,posdll+ordinallist,SEEK_SET);
 			itok.sib=0;
@@ -695,10 +696,10 @@ errread:
 			tok=tk_apiproc;
 			itok.number=secondcallnum++;
 			itok.segm=NOT_DYNAMIC;
-			string[0]=0;
+			String[0]=0;
 			if(newdll->num==0)listapi=(APIPROC *)MALLOC(sizeof(APIPROC));	//первая в списке
 			else listapi=(APIPROC *)REALLOC(listapi,sizeof(APIPROC)*(newdll->num+1));
-			(listapi+newdll->num)->recapi=addtotree(itok.name);
+			(listapi+newdll->num)->recapi= addToTree(itok.name);
 			newdll->num++;
 		}
 		nameadr+=4;
@@ -708,12 +709,12 @@ errread:
 	fclose(infile);
 }
 
-void CreatStub(char *name)
+void createStub(const std::string &Name)
 {
 	sizestub=SIZESTUB;
-	hout=CreateOutPut(outext,"wb");
-	sprintf(&stub[STRVERS],"%s%s",compilerstr,__DATE__);
-	if(name==NULL){
+	hout= createOutPut(outext, "wb");
+	sprintf((char *)&stub[STRVERS],"%s%s",compilerstr,__DATE__);
+    if (Name.empty()) {
 stdstub:
 		if(fwrite(stub,SIZESTUB,1,hout)!=1){
 errwrite:
@@ -724,8 +725,8 @@ errwrite:
 	else{
 EXE_DOS_HEADER exeheader;  // header for EXE format
 FILE *stubin;
-		if((stubin=fopen(name,"rb"))==NULL){
-			ErrOpenFile(name);
+		if((stubin=fopen(Name.c_str(),"rb"))==NULL){
+            errOpenFile(Name);
 			goto stdstub;
 		}
 		if(fread(&exeheader,sizeof(EXE_DOS_HEADER),1,stubin)!=1){
@@ -736,7 +737,7 @@ errread:
 		}
 		if(exeheader.sign!=0x5A4D){
 errstub:
-			fprintf(stderr,"File %s can not be stub file.\n",name);
+			fprintf(stderr,"File %s can not be stub file.\n",Name);
 			fclose(stubin);
 			goto stdstub;
 		}
@@ -756,10 +757,10 @@ errstub:
 					case 'EL':
 					case 'XL':
 #else
-					case 'PE':
-					case 'NE':
-					case 'LE':
-					case 'LX':
+					case 'P' + 'E' * 256:
+					case 'N' + 'E' * 256:
+					case 'L' + 'E' * 256:
+					case 'L' + 'X' * 256:
 #endif
 						goto errstub;
 				}
@@ -922,8 +923,8 @@ unsigned long sizehead,curobj,resnum,numresrel,segres,lastoffset,headernum;
 OBJECT_ENTRY *objentry;
 int i;
 LISTRELOC *resrel=NULL;
-char *codesecname;
-	hout=CreateOutPut("obj","wb");
+	const char *codesecname;
+	hout= createOutPut("obj", "wb");
 	chead.cpu=0x14c;
 	chead.SizeOfOptionalHeader=0;
 	chead.date_time=0;
@@ -943,8 +944,8 @@ char *codesecname;
 	lastoffset=sizehead+sizeof(COFF_HEADER);
 //	if(header){
 		strcpy((objentry+curobj)->name,".version");
-		sprintf(&stub[STRVERS],"%s%s",compilerstr,__DATE__);
-		(objentry+curobj)->psize=strlen(&stub[STRVERS])+1;
+		sprintf((char *)&stub[STRVERS],"%s%s",compilerstr,__DATE__);
+		(objentry+curobj)->psize=strlen((char *)&stub[STRVERS])+1;
 		(objentry+curobj)->pOffset=lastoffset;
 		(objentry+curobj)->flags=0x100A00;
 		headernum=curobj;
@@ -992,9 +993,9 @@ char *codesecname;
 	(isymbol+1)->Value=1;
 	(isymbol+1)->SectionNumber=-2;
 	(isymbol+1)->StorageClass=0x67;
-	i=(strlen(startfileinfo->filename)-1)/sizeof(IMAGE_SYMBOL)+1;
+	i = (FilesInfo[0].Filename.size() - 1) / sizeof(IMAGE_SYMBOL) + 1;
 	(isymbol+1)->NumberOfAuxSymbols=i;
-	strcpy((isymbol+2)->N.sname,startfileinfo->filename);
+	strcpy((isymbol + 2)->N.sname, FilesInfo[0].Filename.c_str());
 	numsymbol=i+2;
 	segtext=numsymbol;
 	strcpy((isymbol+numsymbol)->N.sname,codesecname);

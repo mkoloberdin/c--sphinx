@@ -9,7 +9,7 @@ void notclassname(char *name)
 {
 char buf[90];
 	sprintf(buf,"'%s' not class name",name);
-	preerror(buf);
+	prError(buf);
 	nexttok();	//пропуск ::
 	nexttok();
 }
@@ -18,7 +18,7 @@ void notclassproc(char *classname, char* procname)
 {
 char buf[160];
 	sprintf(buf,"'%s' not member class '%s'",procname,classname);
-	preerror(buf);
+	prError(buf);
 }
 
 void AddThis()
@@ -77,7 +77,7 @@ char classname[IDLENGTH];
 		}
 //		if(itok.flag&f_static)searchteg=NULL;
 		if(AlignProc!=FALSE)AlignCD(CS,alignproc);
-		if(dbg)AddLine();
+		if(dbg)addLine();
 		setproc(1);
 	}
 	else{

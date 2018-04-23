@@ -4,7 +4,7 @@
 
 unsigned char optinitreg=TRUE;
 int OptNameIDX(char *name,char *nam,int size);
-int getnumber(char *buf,unsigned long *num,int *typenum=NULL);
+int getNumber(const std::string &InputStr, unsigned long *num, int *typenum = NULL);
 int convertrazr(int *reg,int razr);
 
 enum{
@@ -254,7 +254,7 @@ void GenRegToReg(int regd,int regs,int razr)
 	}
 }
 
-int CheckIDZReg(char *name,int reg,int razr)
+int checkIDZReg(const std::string &Name, int reg, int razr)
 /*
  name - адрес строки
  */
@@ -269,7 +269,7 @@ int i;
 		if((regstat+i)->type==t_id){
 			if((regstat+i)->razr==nr||(razr==r8&&((regstat+i)->razr==razr_8l||
 					(regstat+i)->razr==razr_8h))){
-				if(strcmp(name,(regstat+i)->id)==0){
+				if (strcmp(Name.c_str(), (regstat + i)->id) == 0) {
 					if(i==reg&&nr==(regstat+i)->razr){
 						if(/*razr==r8&&*/nr==razr_8h)reg+=4;
 						waralreadinit(razr==r8?begs[reg]:regs[razr/4][reg]);
@@ -284,7 +284,7 @@ REGEQVAR *cur;
 		cur=(regstat+i)->next;
 		while(cur){
 			if(cur->razr==nr||(razr==r8&&(cur->razr==razr_8l||cur->razr==razr_8h))){
-				if(strcmp(name,cur->name)==0){
+				if(strcmp(Name.c_str(),cur->name)==0){
 					if(i==reg&&nr==cur->razr){
 						if(nr==razr_8h)reg+=4;
 						waralreadinit(razr==r8?begs[reg]:regs[razr/4][reg]);
@@ -308,18 +308,19 @@ REGEQVAR *cur;
 	return retreg;
 }
 
-void IDZToReg(char *name,int reg,int razr)
+void IDZToReg(const std::string Name, int reg, int razr)
 /*
  name - адрес строки
  */
 {
 int nr;
-	if(optinitreg==FALSE||name==NULL||razr>r32)return;
+	if (optinitreg == FALSE || Name.empty() || razr > r32)
+		return;
 	nr=convertrazr(&reg,razr);
 	ClearReg(reg);
 	(regstat+reg)->type=t_id;
 	(regstat+reg)->razr=nr;
-	strcpy((regstat+reg)->id,name);
+	strcpy((regstat + reg)->id, Name.c_str());
 	KillRegLec(reg);
 }
 
@@ -330,7 +331,7 @@ int nr;
 	if(optinitreg!=FALSE&&razr<=r32&&(regstat+reg)->type==t_id&&
 			(regstat+reg)->razr==nr){
 		if(isdigit((regstat+reg)->id[0])){
-			if(getnumber((regstat+reg)->id,num))return reg;
+			if(getNumber((regstat + reg)->id, num))return reg;
 		}
 	}
 	return NOINREG;
@@ -349,7 +350,7 @@ unsigned long nnum;
 			if((regstat+reg)->type==t_id&&(regstat+reg)->razr==nr){
 //				printf("reg=%d %s\n",reg,(regstat+reg)->id);
 				if(isdigit((regstat+reg)->id[0])){
-					if(getnumber((regstat+reg)->id,num)){
+					if(getNumber((regstat + reg)->id, num)){
 						if(*num==number)return reg;
 						if(*num>number&&(*num-number)<dnum){
 							dnum=*num-number;
@@ -370,7 +371,7 @@ unsigned long nnum;
 	return rreg;
 }
 
-int getnumber(char *buf,unsigned long *num,int *typenum)
+int getNumber(const std::string &InputStr, unsigned long *num, int *typenum)
 {
 int temp2;
 unsigned char *oinput;
@@ -379,7 +380,7 @@ int retcode=FALSE;
 	oinptr=inptr;
 	oinput=input;
 	oendinptr=endinptr;
-	input=buf;
+	input = (unsigned char *)InputStr.c_str();
 	inptr=0;
 	endinptr=256;
 	*num=scannumber(typenum==NULL?&temp2:typenum);
@@ -390,7 +391,7 @@ int retcode=FALSE;
 	return retcode;
 }
 
-char *GetLecsem(int stop1,int stop2,int type)
+const std::string getLexem(int Stop1, int Stop2, int Type)
 {
 int oinptr,oinptr2;
 char ocha;
@@ -407,7 +408,7 @@ int pinptr;
 		case tk_apiproc:
 		case tk_undefproc:
 		case tk_declare:
-			return NULL;
+			return ""s;
 	}
 	oinptr=inptr;
 	oinptr2=inptr=inptr2;
@@ -426,7 +427,7 @@ int pinptr;
 			FastTok(0);
 		}
 		if(tok==tk_openbracket)i++;
-	}while(tok!=stop1&&tok!=stop2&&tok!=tk_eof&&itok.type!=type);
+	}while(tok!=Stop1&&tok!=Stop2&&tok!=tk_eof&&itok.type!=Type);
 	if(pinptr)pinptr--;
 	i=0;
 	if(cha2>' '){
@@ -447,11 +448,11 @@ int pinptr;
 	linenumber=oline;
 	tok=otok;
 	itok=oitok;
-	if(i==SIZEIDREG)return NULL;
+	if (i == SIZEIDREG) return std::string("");
 	c=nam[0];
-	if(c==';'||c==','||c==')'||c=='}')return NULL;
+	if (c == ';' || c == ',' || c == ')' || c == '}') return std::string("");
 	nam[i]=0;
-	return BackString(nam);
+	return std::string(nam);
 }
 
 void GetEndLex(int stop1,int stop2,int type)
@@ -635,7 +636,7 @@ void KillVar(char *name)
  убрать инициализацию регистра
 --------------------------------------------------*/
 {
-char *pstr,*nam;
+const char *pstr, *nam;
 int len;
 	if(optinitreg==FALSE)return;
 	len=strlen(name);
@@ -752,7 +753,8 @@ LVIC *bvic;
 	for(int i=0;i<bak->sizevic;i++){
 		if((bak->listvic+i)->rec != NULL){
 			bvic=bak->listvic+i;
-			for(int j=0;j<cursizevic;j++){
+			int j;
+			for (j=0; j<cursizevic; j++) {
 				if((listvic+j)->rec==bvic->rec){
 					if((listvic+j)->lnumber!=bvic->lnumber)bvic->rec=NULL;
 					break;
@@ -890,7 +892,7 @@ int i;
 				case tk_llequals: operand=tk_ll; break;
 				case tk_numsign:
 					if((listvic+i)->contype==tk_float)(listvic+i)->number|=0x80000000;
-					else if((listvic+i)->contype==tk_double)(listvic+i)->lnumber|=0x8000000000000000I64;
+					else if((listvic+i)->contype==tk_double)(listvic+i)->lnumber|=0x8000000000000000;
 					else (listvic+i)->lnumber=-(listvic+i)->lnumber;
 					return TRUE;;
 				case tk_not:
@@ -951,7 +953,7 @@ int nr;
 	if(replasevar&&optinitreg!=FALSE&&razr<=r32&&(regstat+reg)->type==t_id&&
 			(regstat+reg)->razr>=nr){
 		if(isdigit((regstat+reg)->id[0])){
-			if(getnumber((regstat+reg)->id,&num,&typenum)){
+			if(getNumber((regstat + reg)->id, &num, &typenum)){
 				Const2Var(itok4,num,typenum);
 				return TRUE;
 			}
@@ -969,7 +971,7 @@ int nr;
 	if(replasevar&&optinitreg!=FALSE&&razr<=r32&&(regstat+reg)->type==t_id&&
 			(regstat+reg)->razr>=nr){
 		if(isdigit((regstat+reg)->id[0])){
-			if(getnumber((regstat+reg)->id,&num,&typenum))return UpdVarConst(itok4,num,typenum,operand);
+			if(getNumber((regstat + reg)->id, &num, &typenum))return UpdVarConst(itok4,num,typenum,operand);
 		}
 	}
 	return FALSE;
@@ -1018,7 +1020,7 @@ int numinreg=FALSE;
 			if(freevic==-1&&(listvic+i)->rec==NULL)freevic=i;
 		}
 		if(isdigit((regstat+reg)->id[0])){
-			if(getnumber((regstat+reg)->id,&num,&typenum)){	//цифра в регистре
+			if(getNumber((regstat + reg)->id, &num, &typenum)){	//цифра в регистре
 				if(i!=cursizevic)ConstToReg((listvic+i)->lnumber,reg,razr);	//новую в регистр
 				else{
 					if(freevic==-1){
