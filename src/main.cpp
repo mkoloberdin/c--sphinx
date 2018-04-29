@@ -371,12 +371,10 @@ union{
 	if(undefoffstart!=NULL){	//выдать список неизвестных ссылок
 		UNDEFOFF *curptr=undefoffstart;
 		for(;;){
-			char holdstr[80];
 			UNDEFOFF *ocurptr;
 			linenumber=curptr->pos->line;
-			sprintf(holdstr,"\'%s\' offset undefined",curptr->name);
 			CurrentFileInfoNum=curptr->pos->file;
-			prError(holdstr);
+			prError("'"s + curptr->name + "' offset undefined"s);
 			free(curptr->pos);
 			if(curptr->next==NULL)break;
 			ocurptr=curptr->next;

@@ -6,13 +6,15 @@
 #define INDEX(a)  (((a)>>3)&7)
 #define BASE(a)   ((a)&7)
 
-typedef union{
-  struct{
-    unsigned short ofs;
-    unsigned short seg;
-  }w;
-  unsigned long dword;
-}WORD32;
+#include <cstdint>
+
+typedef union {
+    struct {
+        uint16_t ofs;
+        uint16_t seg;
+    } w;
+    uint32_t dword;
+} WORD32;
 
 /* prototypes */
 void ua_str(const char *, fs::ofstream &OFS);

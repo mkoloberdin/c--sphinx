@@ -11,6 +11,8 @@
 #include <io.h>
 #endif
 
+#include <iostream>
+
 #include "tok.h"
 
 unsigned char gotoendif=FALSE;
@@ -818,16 +820,17 @@ struct _HLIB_
 
 int FindProcLib(int type)
 {
-static int lhandl=-1;
+	static fs::ifstream IFS;
 long ofs=0;
 char m1[80];
 int index;
 	if(am32)return -1;
-	if(lhandl==-1){
-		sprintf(m1, "%s%s", IncludePaths[0].c_str(), "mainlib.ldp");
-		if((lhandl=open(m1,O_RDONLY|O_BINARY))==-1)return -1;
+	if (!IFS.is_open()) {
+		IFS.open(IncludePaths[0] / "mainlib.ldp");
+		if (!IFS.is_open())
+			return -1;
 	}
-	lseek(lhandl,0,SEEK_SET);
+	IFS.seekg(0);
 		if(chip<3){
 		if(optimizespeed==0)index=0;
 		else index=1;
@@ -837,18 +840,22 @@ int index;
 		else index=3;
 	}
 	for(;;){
-		if(read(lhandl,&hlib,sizeof(_HLIB_))!=sizeof(_HLIB_))break;
+		IFS.read((char *) &hlib, sizeof(_HLIB_));
+		if (IFS.gcount() != sizeof(_HLIB_))
+			break;
 		if(strcmp((char *)itok.name,hlib.name)==0){
 int size;
 			if((outptr+hlib.size)>=outptrsize)CheckCodeSize();
-			lseek(lhandl,ofs+sizeof(_HLIB_)+hlib.info[index].ofs,SEEK_SET);
+			IFS.seekg(ofs + sizeof(_HLIB_) + hlib.info[index].ofs);
 			size=hlib.info[index].size;
 			if(type!=1)size--;
 			else if(dbg&2){
 				sprintf(m1,"%s()",itok.name);
 				addCodeNullLine(m1);
 			}
-			if(read(lhandl,output+outptr,size)!=size)break;
+			IFS.read((char *) (output + outptr), size);
+			if (IFS.gcount() != size)
+				break;
 			outptr+=size;
 			if(splitdata==0)outptrdata=outptr;
 			if(cpu<hlib.info[index].cpu)cpu=hlib.info[index].cpu;
@@ -866,7 +873,7 @@ int size;
 			return hlib.rettype;
 		}
 		ofs+=sizeof(_HLIB_)+hlib.size;
-		lseek(lhandl,ofs,SEEK_SET);
+		IFS.seekg(ofs);
 	}
 	return -1;
 }
@@ -1850,8 +1857,8 @@ int oscanlexmode;
 					SelectComand((char *) TmpStr.c_str(), 0);
 					break;
 				case p_li:
-					printf("%s (%u) %s\n", FilesInfo[CurrentFileInfoNum].Filename.c_str(), linenumber,
-						   TmpStr.empty() ? "" : TmpStr.c_str());
+                    std::cout << FilesInfo[CurrentFileInfoNum].Filename << " ("s << std::to_string(linenumber) << ") "s
+                              << (TmpStr.empty() ? ""s : TmpStr) << std::endl;
 					break;
 				case p_st:
 					i = 0;
@@ -1914,8 +1921,10 @@ int oscanlexmode;
 									if (i)unknownPragma("pack(pop)");
 									i = 2;
 								} else if (strcmp(itok.name, "show") == 0) {
-									printf("%s (%u) Current packing alignment for structure = %d\n",
-										   FilesInfo[CurrentFileInfoNum].Filename.c_str(), linenumber, strpackcur);
+                                    std::cout << FilesInfo[CurrentFileInfoNum].Filename << " ("s
+                                              << std::to_string(linenumber)
+                                              << ") Current packing alignment for structure = "s
+                                              << std::to_string(strpackcur) << std::endl;
 									i = 3;
 								} else {
 									switch (i) {

@@ -306,9 +306,9 @@ unsigned int i,j;
 
 void addNameToTable(const std::string &Name)
 {
-int i=0;
-char c;
+	size_t i=0;
 	do {
+		char c;
 		c=Name[i++];
 		op(c);
 	} while (i < Name.size());
@@ -342,9 +342,9 @@ void AddSymbolList(struct idrec *ptr)
 
 void addNameToPul(const std::string &Name)
 {
-static int sizebuf=0;
-	size_t i=Name.size();
-	if((lastofspul+i+2)>=sizebuf){
+	static size_t sizebuf = 0;
+	size_t i = Name.size();
+	if ((lastofspul + i + 2) >= sizebuf) {
 		sizebuf+=STRLEN;
 		if(sizebuf==STRLEN)bufname=(unsigned char *)MALLOC(sizebuf);
 		else bufname=(unsigned char *)REALLOC(bufname,sizebuf);

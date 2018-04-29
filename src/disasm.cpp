@@ -577,20 +577,19 @@ void printdword(unsigned int c)
 
 void addr_to_hex(long addr, unsigned char splitup)
 {
-static char buffer[11];
-WORD32 adr;
-  adr.dword=addr;
-  if(splitup){
-    if(adr.w.seg==0/*||adr.w.seg==0xffff*/)printword(adr.w.ofs);//sprintf(buffer,"%04Xh",adr.w.ofs);
-    else{
-			sprintf(buffer,"%04Xh:%04Xh",adr.w.seg,adr.w.ofs);
-			uprintf("%s",buffer);
+	WORD32 adr;
+	adr.dword = addr;
+	if (splitup) {
+		if (adr.w.seg == 0/*||adr.w.seg==0xffff*/)printword(adr.w.ofs);//sprintf(buffer,"%04Xh",adr.w.ofs);
+		else {
+			char buffer[12];
+			sprintf(buffer, "%04Xh:%04Xh", adr.w.seg, adr.w.ofs);
+			uprintf("%s", buffer);
 		}
-  }
-	else{
-    if(adr.w.seg==0/*||adr.w.seg==0xffff*/)printword(adr.w.ofs);//sprintf(buffer,"%04Xh",adr.w.ofs);
-    else printdword(addr);//sprintf(buffer, "%08lXh",addr);
-  }
+	} else {
+		if (adr.w.seg == 0/*||adr.w.seg==0xffff*/)printword(adr.w.ofs);//sprintf(buffer,"%04Xh",adr.w.ofs);
+		else printdword(addr);//sprintf(buffer, "%08lXh",addr);
+	}
 }
 
 unsigned char getByte(fs::ofstream &OFS)

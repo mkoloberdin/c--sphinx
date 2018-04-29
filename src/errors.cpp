@@ -180,9 +180,7 @@ void notexternfun()
 
 void idalreadydefined()
 {
-char holdstr[80];
-	sprintf(holdstr,"identifier '%s' already defined",itok.name);
-	prError(holdstr);
+	prError("identifier '"s + itok.name +"' already defined"s);
 	FindStopTok();
 //	nexttok();
 }
