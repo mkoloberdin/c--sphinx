@@ -39,7 +39,7 @@ std::vector<fs::path> IncludePaths = { { "" } };
 char modelmem=TINY;
 std::string StubFile;
 std::string winstub;
-FILE *hout=NULL;
+//FILE *hout=NULL;
 fs::path StartupFilename = {"startup.h--"};
 
 
@@ -208,7 +208,7 @@ int sbufstr=SIZEBUF;	//начальный размер этого буфера
 
 void compile();
 void printInfo(const char **str);
-void loadIni(const char *Name);
+void loadIni(const fs::path &Filename);
 //void CheckNumStr();
 void listId(int num, unsigned char *list, uint16_t *ofs);
 void printmemsizes();
@@ -217,14 +217,14 @@ void doposts(void);
 void GetMemExeDat();
 void AddJmpApi();
 void startsymbiosys(char *symfile);
-int writeoutput();
-void BadCommandLine(char *str);
+int writeOutput();
+void badCommandLine(const std::string &Str);
 void checkExtenshions(const fs::path &Extension);
 void ImportName(char *name);
 void WarnUnusedVar();//предупреждения о неиспользованных процедурах и переменных
 void MakeExeHeader(EXE_DOS_HEADER *exeheader);
 void CheckPageCode(unsigned int ofs);
-int MakePE();
+int makePE(fs::ofstream &OFS);
 int makeObj();
 void CheckUndefClassProc();
 /*
@@ -239,9 +239,9 @@ void PrintTegList(structteg *tteg)
 
 //unsigned long maxusedmem=0;
 
-void errOpenFile(const fs::path &Str)
+void errOpenFile(const fs::path &Filename)
 {
-	fprintf(stderr, "Unable to open file %s.\n", Str.c_str());
+	std::cerr << "Unable to open file " << Filename << "." << std::endl;
 }
 
 int main(int argc, char **argv)
@@ -273,7 +273,7 @@ unsigned char pari=FALSE;
 		for (count = 1; count < argc; count++) { //обработка командной строки
 			if (argv[count][0] == '/' || argv[count][0] == '-') {
 				if (SelectComand(argv[count] + 1, &count) == c_end)
-					BadCommandLine(argv[count]);
+                    badCommandLine(argv[count]);
 			} else {
 				if (pari == FALSE) {
 					RawFileName = argv[count];
@@ -330,18 +330,20 @@ union{
 };
 //создатьь имя файла с предупреждениями и если он есть удалить
 	errfile.Name = fs::path{RawFileName.string() + ".err"s};
-	if (stat(errfile.Name.c_str(), (struct stat *) String2) == 0)remove(errfile.Name.c_str());
+	if (fs::exists(errfile.Name))
+		fs::remove(errfile.Name);
 //если есть имя файла для предупреждений проверить его существование и удалить.
 	if (!(wartype.Name.empty())) {
-		if(stat(wartype.Name.c_str(),(struct stat *)String2)==0)remove(wartype.Name.c_str());
+		if (fs::exists(wartype.Name))
+			fs::remove(wartype.Name);
 	}
 	puts("Compiling Commenced . . .");
 	if (!RawExt.empty())
-		sprintf((char *) String, "%s.%s", RawFileName, RawExt.c_str());
+		RawFileName.replace_extension(RawExt);
 	else{
 		for(const auto &Ext : CompilableExtensions){
 			RawFileName.replace_extension(Ext);
-			if (stat(RawFileName.c_str(), (struct stat *) String2) == 0)
+			if (fs::exists(RawFileName))
 				break;
 		}
 	}
@@ -396,7 +398,7 @@ union{
 	if(fobj==FALSE){
 		if(comfile==file_w32&&error==0){
 			AddJmpApi();	//коственные вызовы API
-			CreatWinStub();
+			createWinStub();
 		}
 		longhold=outptr;
 		if(comfile==file_rom){
@@ -489,7 +491,7 @@ union{
 				runfilesize+=0x20;
 		printmemsizes();
 		endinptr=outptr;
-		if(writeoutput()==0)printf("Run File Saved (%ld bytes).\n",runfilesize);
+		if(writeOutput() == 0)printf("Run File Saved (%ld bytes).\n", runfilesize);
 		if(comfile==file_w32&&fobj==FALSE)printf("Created file of a format PE for Windows.\nFor alignment section code, added %u zero bytes.\n",filingzerope);
 //		else if(FILEALIGN&&fobj==FALSE)printf("For alignment file, added %u zero bytes.\n",filingzerope);
 	}
@@ -1038,22 +1040,29 @@ void print8item(const char *Str)
 	puts("");
 }
 
-void loadIni(const char *Name)
+void loadIni(const fs::path &Filename)
 {
-FILE *inih;
-char m1[256];
-	if((inih=fopen(Name,"rb"))==NULL){
-		if(strcmp(Name,"c--.ini")==0){
-			sprintf(m1, "%s/%s", IncludePaths[0].c_str(), Name);
-			if((inih=fopen(m1,"rb"))==NULL)return;
-		}
-		else return;
+    fs::ifstream IFS;
+    if (!fs::exists(Filename)) {
+        if (Filename.string() == "c--.ini"s) {
+            fs::path F = IncludePaths[0] / Filename;
+            IFS.open(F, std::ios_base::binary);
+            if (IFS.bad())
+                return;
+        } else return;
+    } else {
+	    IFS.open(Filename, std::ios_base::binary);
 	}
-	for(;;){
-		if(fgets(m1,255,inih)==NULL)break;
-		if(SelectComand(m1,0)==c_end)BadCommandLine(m1);
-	}
-	fclose(inih);
+	std::string Str;
+    if (IFS.is_open()) {
+        do {
+            std::getline(IFS, Str);
+            if (IFS.bad()) break;
+            if (SelectComand((char *) Str.c_str(), 0) == c_end)
+                badCommandLine(Str);
+        } while (!IFS.eof());
+        IFS.close();
+    }
 }
 
 /*****************************************************************************
@@ -1185,53 +1194,77 @@ char buf[40];
 	}
 }
 
-int writeoutput()
+int saveCode(fs::ofstream &OFS) {
+	OFS.write((const char *) (output + startptr), outptr - startptr);
+	if (!OFS.bad()) {
+		if (modelmem == SMALL && outptrdata != 0) {
+			OFS.write((const char *) outputdata, outptrdata);
+		}
+		if (!OFS.bad()) {
+			OFS.close();
+			return 0;
+		}
+	} else {
+		OFS.close();
+		ErrWrite();
+		return(-1);
+	}
+}
+
+int writeOutput()
 {
+    fs::ofstream OFS;
 EXE_DOS_HEADER exeheader;  // header for EXE format
 	if(fobj){
-		if(comfile==file_w32&&ocoff)return MakeCoff();
+		if(comfile==file_w32&&ocoff)return makeCoff();
 		return makeObj();
 	}
-	if(comfile==file_w32)return MakePE();
-	if(comfile==file_meos)return MakeMEOS();
-	if(comfile==file_bin)return MakeBin32();
+	if(comfile==file_w32)return makePE(OFS);
+	if(comfile==file_meos)return makeMEOS(OFS);
+	if(comfile==file_bin)return makeBin32(OFS);
 	memset(&exeheader,0,sizeof(EXE_DOS_HEADER));
 	if(comfile==file_d32){
 		if(usestub){
-			MakeLE();
-			runfilesize+=ftell(hout)-32;
-			goto savecode;
+			makeLE(OFS);
+            runfilesize += (long) OFS.tellp() - 32;
+			return saveCode(OFS);
 		}
 		else goto exefile;
 	}
 	if(comfile==file_com||comfile==file_sys||comfile==file_rom){
-		hout= createOutPut(outext, "wb");
-		if(fwrite(output+startptr,comfile==file_rom?romsize:outptr-startptr,1,hout)!=1){
+	    fs::path Filename = makeOutputFilename(outext);
+	    OFS.open(Filename, std::ios_base::binary);
+        dieIfNotOpen(Filename, OFS);
+        OFS.write((const char *) (output + startptr), comfile == file_rom ? romsize : outptr - startptr);
+        if (OFS.bad()) {
 			ErrWrite();
 			return(-1);
 		}
 	}
 	else if(comfile==file_exe){
 exefile:
-		hout= createOutPut(outext, "wb");
+        fs::path Filename = makeOutputFilename(outext);
+        OFS.open(Filename, std::ios_base::binary);
+		dieIfNotOpen(Filename, OFS);
 		MakeExeHeader(&exeheader);
-		if(fwrite(&exeheader,sizeof(EXE_DOS_HEADER),1,hout)!=1){
-errwr:
-			fclose(hout);
-			hout=NULL;
+        OFS.write((const char *) &exeheader, sizeof(EXE_DOS_HEADER));
+        if (OFS.bad()) {
+			OFS.close();
 			ErrWrite();
 			return(-1);
 		}
-		outputcodestart=ftell(hout);
-savecode:
-		if(fwrite(output+startptr,outptr-startptr,1,hout)!=1)goto errwr;
-		if(modelmem==SMALL&&outptrdata!=0){
-			if(fwrite(outputdata,outptrdata,1,hout)!=1)goto errwr;
-		}
+		outputcodestart=OFS.tellp();
+        return saveCode(OFS);
 	}
-	fclose(hout);
-	hout=NULL;
+	OFS.close();
 	return(0);
+}
+
+void copyStream(fs::ifstream &IFS, fs::ofstream &OFS) {
+	char c;
+	while (IFS.get(c)) {
+		OFS << c;
+	}
 }
 
 long CopyFile(FILE *in,FILE *out)
@@ -1363,9 +1396,9 @@ int filehandle;
 	addConstToTree("__comsymbios", TRUE);
 }
 
-void BadCommandLine(char *str)
+void badCommandLine(const std::string &Str)
 {
-	printf("Unknown or bad command line option '%s'.\n",str);
+    std::cerr << "Unknown or bad command line option '"s << Str << "'." << std::endl;
 //					PrintInfo(usage);
 	exit(e_unknowncommandline);
 }
@@ -1598,16 +1631,19 @@ TypeValue TypeV;
 	startline=ostartline;
 }
 
-FILE *createOutPut(const fs::path &Ext, const char *Mode)
-{
-FILE *diskout;
-    fs::path Filename = RawFileName.replace_extension(Ext);
-	if ((diskout = fopen(Filename.c_str(), Mode)) == nullptr) {
-		errOpenFile(Filename);
-		exit(e_notcreateoutput);
-	}
-	return diskout;
+fs::path makeOutputFilename(const fs::path &Ext) {
+	fs::path Filename = RawFileName;
+	Filename.replace_extension(Ext);
+	return Filename;
 }
+
+void dieIfNotOpen(fs::path &Filename, fs::ofstream &OFS) {
+        if (!OFS.is_open()) {
+            errOpenFile(Filename);
+            exit(e_notcreateoutput);
+        }
+}
+
 
 int numundefclassproc=0;
 idrec **undefclassproc;

@@ -14,9 +14,8 @@ using namespace std::string_literals;
 #include <io.h>
 #endif
 
-#if !defined(_WIN32)
-void GetFileTime(int fd,struct ftime *buf);
-#else
+void getFileTime(const fs::path &Filename, struct ftime *buf);
+#if defined(_WIN32)
 #include <time.h>
 #endif
 
@@ -141,7 +140,7 @@ void globalvar(); 	/* both initialized and unitialized combined */
 void doswitch();
 void CalcRegPar(int reg,int def,char *&ofsstr);
 void JXorJMP();
-int loadInputFile(const fs::path &InputFile);
+int loadInputFile(const fs::path &Filename);
 int SaveStartUp(int size,char *var_name);
 void loadData(size_t size, int filehandle);
 void setNewTok(int type, TypeValue TypeV);
@@ -192,7 +191,7 @@ int hold;
 	size_t NumIncludePaths = IncludePaths.size();
 	for (int i = 0; i < NumIncludePaths; i++) {
         fs::path P = IncludePaths[(FirstFlag == 0 ? i : (NumIncludePaths - 1) - i)] / Filename;
-		if ((hold = loadInputFile(P)) != -2)
+		if (fs::exists(P) && ((hold = loadInputFile(P)) != -2))
 			break;
 		if (FirstFlag == 2 || (FirstFlag == 0 && (i + 1) == NumIncludePaths))break;
 	}
@@ -9297,28 +9296,26 @@ char holdstr[32+IDLENGTH];
 }
 
 /* ================ input procedures start ================= */
-int loadInputFile(const fs::path &InputFile)	//считывание файла в память
+int loadInputFile(const fs::path &Filename)	//считывание файла в память
 {
-	size_t size;
-int filehandle;
-	if ((filehandle = open(InputFile.c_str(), O_BINARY | O_RDONLY)) == -1)
-		return -2;
 	boost::system::error_code ec;
-	size = fs::file_size(InputFile, ec);
+	size_t size = fs::file_size(Filename, ec);
 	if (size == 0 || ec) {
-		badInputFile(InputFile);
-		close(filehandle);
+		badInputFile(Filename);
 		return(-1);
 	}
+	fs::ifstream IFS(Filename, std::ios_base::binary);
+	if (!IFS.is_open())
+		return -2;
 	if(totalmodule==0){
-		FILEINFO FI(InputFile, 0, nullptr);
+		FILEINFO FI(Filename, 0, nullptr);
 		FilesInfo.emplace_back(FI);
 		totalmodule=1;
 		CurrentFileInfoNum=0;
 	}
 	else{	//поиск емени файла в списке обработанных
 		for(CurrentFileInfoNum=0;CurrentFileInfoNum<totalmodule;CurrentFileInfoNum++){
-			if (boost::iequals(InputFile.string(), FilesInfo[CurrentFileInfoNum].Filename.string()))
+			if (boost::iequals(Filename.string(), FilesInfo[CurrentFileInfoNum].Filename.string()))
 				break;
 		}
 		if(CurrentFileInfoNum!=totalmodule){
@@ -9326,29 +9323,27 @@ int filehandle;
 			goto cont_load;
 		}
 		totalmodule++;
-		FILEINFO FI(InputFile, 0, nullptr);
+		FILEINFO FI(Filename, 0, nullptr);
 		FilesInfo.emplace_back(FI);
 	}
 	FilesInfo[CurrentFileInfoNum].stlist = nullptr;
-	FilesInfo[CurrentFileInfoNum].Filename=InputFile;
+	FilesInfo[CurrentFileInfoNum].Filename=Filename;
 	FilesInfo[CurrentFileInfoNum].numdline = 0;
-#if !defined(_WIN32)
-	GetFileTime(filehandle, &FilesInfo[CurrentFileInfoNum].time);
-#else
-	getftime(filehandle, &StartFileInfo[CurrentFileInfoNum].time);
-#endif
+	getFileTime(Filename, &FilesInfo[CurrentFileInfoNum].time);
 cont_load:
 	staticlist = FilesInfo[CurrentFileInfoNum].stlist;
 	input=(unsigned char *)MALLOC(size+1);
 
 //	printf("%08lX %s %lu\n",input,inpfile,size);
 
-	if((endinptr=read(filehandle,input,size))!=size){
-		errorReadingFile(InputFile);
-		close(filehandle);
+	IFS.read((char *) input, size);
+	endinptr = IFS.gcount();
+	if (endinptr != size) {
+		errorReadingFile(Filename);
+		IFS.close();
 		return(-1);
 	}
-	close(filehandle);
+	IFS.close();
 	return(0);
 }
 
@@ -10157,21 +10152,18 @@ int noname=FALSE;
 	return 0;
 }
 
-#if !defined(_WIN32)
-void GetFileTime(int fd,struct ftime *buf)
+void getFileTime(const fs::path &Filename, struct ftime *buf)
 {
-struct stat sb;
-struct tm *tblock;
-	fstat(fd,&sb);
-	tblock=localtime(&sb.st_atime);
-	buf->ft_tsec=tblock->tm_sec;
-	buf->ft_min=tblock->tm_min;
-	buf->ft_hour=tblock->tm_hour;
-	buf->ft_day=tblock->tm_mday;
-	buf->ft_month=tblock->tm_mon;
-	buf->ft_year=tblock->tm_year-80;
+	std::time_t T = fs::last_write_time(Filename);
+	struct tm *tblock;
+	tblock = localtime(&T);
+	buf->ft_tsec = tblock->tm_sec;
+	buf->ft_min = tblock->tm_min;
+	buf->ft_hour = tblock->tm_hour;
+	buf->ft_day = tblock->tm_mday;
+	buf->ft_month = tblock->tm_mon;
+	buf->ft_year = tblock->tm_year - 80;
 }
-#endif
 
 void CheckPosts()
 {

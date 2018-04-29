@@ -52,7 +52,7 @@ struct TUSE{
 
 unsigned int numtyperes=0;	//число типов ресурсов
 
-void addType(unsigned short Type, const string &TName = ""s)
+void addType(unsigned short Type, const std::string &TName = ""s)
 {
 	if(tuse==NULL){
 		tuse=(TUSE *)MALLOC(sizeof(TUSE));
@@ -1047,27 +1047,27 @@ void GetFileName(char *name)
 
 unsigned char *loadFileBin(const fs::path &Filename)
 {
-int inico;
-unsigned char *bitobr;
-	if((inico=open(Filename.c_str(),O_BINARY|O_RDONLY))==-1){
+    boost::system::error_code ec;
+    curposbuf = fs::file_size(Filename, ec);
+    if (curposbuf == 0 || ec) {
+        badInputFile(Filename);
+        return nullptr;
+    }
+    fs::ifstream IFS(Filename, std::ios_base::binary);
+    if (!IFS.is_open()) {
 		badInputFile(Filename);
-		return NULL;
+		return nullptr;
 	}
-	boost::system::error_code ec;
-	curposbuf = fs::file_size(Filename, ec);
-	if (curposbuf == 0 || ec) {
-		badInputFile(Filename);
-		close(inico);
-		return NULL;
-	}
+    unsigned char *bitobr;
 	bitobr=(unsigned char *)MALLOC(curposbuf);
-	if((unsigned int)read(inico,bitobr,curposbuf)!=curposbuf){
+    IFS.read((char *) bitobr, curposbuf);
+    if (IFS.gcount() != curposbuf) {
 		errorReadingFile(Filename);
-		close(inico);
+		IFS.close();
 		free(bitobr);
-		return NULL;
+		return nullptr;
 	}
-	close(inico);
+	IFS.close();
 	nexttok();
 	return bitobr;
 }

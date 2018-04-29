@@ -5,6 +5,10 @@
 using namespace std::string_literals;
 #include <boost/algorithm/string.hpp>
 
+#include <iomanip>
+#include <sstream>
+#include <iostream>
+
 void warningprint(char *str,int line,int file);
 WARNACT wact[WARNCOUNT]={
 	warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,warningPrint,1,
@@ -56,11 +60,14 @@ void prError3(const std::string &Str, unsigned int line, unsigned int file)//err
 {
 	if(error<maxerrors){
 		error++;
-		sprintf((char *) string3, "%s(%d)#%d> %s.\n", FilesInfo.empty() ? "" : FilesInfo[file].Filename.c_str(),
-				line, error, Str.c_str());
-		printf((char *)string3);
-		if(errfile.file==NULL)errfile.file=fopen(errfile.Name.c_str(),"w+t");
-		if(errfile.file!=NULL)fprintf(errfile.file,(char *)string3);
+		std::ostringstream O;
+        O << (FilesInfo.empty() ? "" : FilesInfo[file].Filename) << "(" << line << ")#" << error << "> " << Str
+          << std::endl;
+        std::cerr << O.str();
+		if (!errfile.OFS)
+			errfile.OFS.open(errfile.Name, std::ios_base::app);
+		if (errfile.OFS)
+			errfile.OFS << O.str();
 	}
 	else exit(e_toomanyerrors);
 }
@@ -669,11 +676,11 @@ void warningretsign()
 void warningPrint(const std::string &Str, unsigned int Line, unsigned int File)
 {
 	if(warning==TRUE){
-		if (!wartype.Name.empty() && wartype.file == stdout) {
-			if ((wartype.file = fopen(wartype.Name.c_str(), "w+t")) == NULL)wartype.file = stdout;
+		if (!wartype.Name.empty() && !wartype.OFS) {
+			wartype.OFS.open(wartype.Name, std::ios_base::app);
 		}
-		fprintf(wartype.file, "%s(%d)> Warning! %s.\n",
-				FilesInfo.empty() ? "" : FilesInfo[File].Filename.c_str(), Line, Str.c_str());
+		wartype.OFS << (FilesInfo.empty() ? "" : FilesInfo[File].Filename)
+					<< "(" << Line << ")> Warning! " << Str << "." << std::endl;
 	}
 }
 
@@ -797,13 +804,6 @@ void warESP()
 }
 
 /* *****************   map file *************** */
-
-void OpenMapFile()
-{
-char buf[256];
-	sprintf(buf,"%s.map",RawFileName.c_str());
-	hmap=fopen(buf,"w+t");
-}
 
 const char * getRetType(int type, int flag)
 {
@@ -992,28 +992,36 @@ void GetRangeUsed(char *buf,localinfo *ptr)
 	else sprintf(buf,"%d-%d",ptr->usedfirst,ptr->usedlast);
 }
 
+fs::ofstream OFS_Map;
+
 void mapfun(int line)
 {
 treelocalrec *ftlr;
 struct localrec *ptr;
 int i,fheader;
 char buf[32];
-	if(hmap==NULL)OpenMapFile();
-	if(hmap){
-		fprintf(hmap,"\n%s%s%s(", getTypeProc(itok.flag), getRetType(itok.rm, itok.flag),GetName(itok.name,itok.flag));
+	fs::path Filename = RawFileName;
+	Filename.replace_extension(".map");
+	if (!OFS_Map)
+		OFS_Map.open(Filename, std::ios::app);
+	if(OFS_Map){
+		OFS_Map << std::endl << getTypeProc(itok.flag) << getRetType(itok.rm, itok.flag)
+				<< GetName(itok.name, itok.flag) << "(";
 		for(i=0;;i++){
 			unsigned char c=String[i];
 			if(c==0)break;
 			if(c>=0x30&&c<=0x37)continue;
-			if(i)fputc(',',hmap);
+			if (i)
+				OFS_Map << ',';
 			unsigned char c2=String[i+1];
 			unsigned char c3=String[i+2];
-			fputs(getFunParam(c, c2, c3),hmap);
+			OFS_Map << getFunParam(c, c2, c3);
 		}
-		fputc(')',hmap);
-		fprintf(hmap, "\nlocation: line %d-%d file %s", line, linenumber,
-				FilesInfo.empty() ? "" : FilesInfo[CurrentFileInfoNum].Filename.c_str());
-		fprintf(hmap,"\noffset=0x%X(%d)\tsize=0x%X(%d)",itok.number,itok.number,itok.size,itok.size);
+		OFS_Map << ')';
+		OFS_Map << std::endl << "location: line " << line << "-" << linenumber << " file "
+				<< (FilesInfo.empty() ? "" : FilesInfo[CurrentFileInfoNum].Filename);
+		OFS_Map << std::endl << "offset=0x" << std::hex << itok.number <<
+				"(" << itok.number << ")\tsize=0x" << std::hex << itok.size << "(" << itok.size << ")";
 	}
 	fheader=0;
 	for(ftlr=btlr;ftlr!=NULL;ftlr=ftlr->next){
@@ -1021,18 +1029,21 @@ char buf[32];
 			i=ptr->rec.type;
 			if(i==tp_postvar||i==tp_gvar||i==tp_localvar||i==tp_paramvar){
 				if(!fheader){
-					fputs("\nType    Address   Used     Count  Size    Name",hmap);
-					fputs("\n----------------------------------------------",hmap);
+					OFS_Map << "\nType    Address   Used     Count  Size    Name";
+					OFS_Map << "\n----------------------------------------------";
 					fheader=TRUE;
 				}
 				GetRangeUsed(buf,&ptr->li);
-				fprintf(hmap,"\n%-8s%-10s%-12s%-4d%-8d", getRetType(ptr->rec.rectok, 0),
+				char tmp[50];
+				sprintf(tmp,"\n%-8s%-10s%-12s%-4d%-8d", getRetType(ptr->rec.rectok, 0),
 						getSizeVar(ptr->rec.type, ptr->rec.recnumber),buf,ptr->li.count,ptr->rec.recsize);
-				if(ptr->rec.npointr)for(i=ptr->rec.npointr;i>0;i--)fputc('*',hmap);
-				fputs(ptr->rec.recid,hmap);
+				OFS_Map << tmp;
+				if (ptr->rec.npointr)
+					for (i = ptr->rec.npointr; i > 0; i--)
+						OFS_Map << '*';
+				OFS_Map << ptr->rec.recid;
 			}
 		}
 	}
-	fputs("\n",hmap);
+	OFS_Map << std::endl;
 }
-

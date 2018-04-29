@@ -1514,7 +1514,7 @@ nextstr:
 #ifdef _WIN32
 	if(useunicode&&displaytokerrors){
 		char *bak;
-		bak= backString((char *) string4);
+		bak= strdup((char *) string4);
 #ifdef __CONSOLE__
 		strptr=MultiByteToWideChar(CP_ACP,MB_PRECOMPOSED,bak,-1,(wchar_t *)string4,STRLEN)-1;
 #else
@@ -1867,7 +1867,7 @@ extreg32:
 			case tk_line: *tok4=tk_number; itok4->number=linenumber; break;
 			case tk_file:
 				*tok4=tk_string;
-				strcpy((char *) string4, FilesInfo[CurrentFileInfoNum].Filename.c_str());
+				strcpy((char *) string4, FilesInfo[CurrentFileInfoNum].Filename.string().c_str()); // FIXME: Handle wide strings properly on Windows [?]
 				itok4->number=strlen((char *)string4);
 				break;
 			case tk_structvar:

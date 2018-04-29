@@ -11,13 +11,15 @@ unsigned short h,l;
 	return l|h;
 }
 
-int MakeBin32()
+int makeBin32(fs::ofstream &OFS)
 {
-	hout= createOutPut(outext, "wb");
-	if(fwrite(output,outptr,1,hout)!=1){
+	fs::path Filename = makeOutputFilename(outext);
+	OFS.open(Filename, std::ios_base::binary);
+	dieIfNotOpen(Filename, OFS);
+	OFS.write((const char *) output, outptr);
+	if (OFS.bad()) {
 		ErrWrite();
-		fclose(hout);
-		hout=NULL;
+		OFS.close();
 		return(-1);
 	}
 	return 0;
@@ -38,10 +40,12 @@ int bb=tk_id;
 	return btok.number;
 }
 
-int MakeMEOS()
+int makeMEOS(fs::ofstream &OFS)
 {
 MEOSheader hdr;
-	hout= createOutPut(outext, "wb");
+	fs::path Filename = makeOutputFilename(outext);
+	OFS.open(Filename, std::ios_base::binary);
+	dieIfNotOpen(Filename, OFS);
 	strcpy((char *)hdr.sign,"MENUET01");
 	hdr.vers=1;
 	hdr.start=EntryPoint();
@@ -51,16 +55,16 @@ MEOSheader hdr;
 	hdr.I_Param=EntryParamStr();
 	hdr.I_Icon=0;
 	memcpy(output+startptr,&hdr,sizeof(MEOSheader));
-	if(fwrite(output,outptr,1,hout)!=1){
+	OFS.write((const char *) output, outptr);
+	if (OFS.bad()) {
 		ErrWrite();
-		fclose(hout);
-		hout=NULL;
+		OFS.close();
 		return(-1);
 	}
 	return 0;
 }
 
-int MakeLE()
+int makeLE(fs::ofstream &OFS)
 {
 LE_Header hdr;
 Object_Table ot[2];
@@ -70,7 +74,7 @@ int headerofs;
 int headsize=sizeof(LE_Header);
 unsigned long *fpto;
 int sizeb;
-	createStub(StubFile);
+    createStub(StubFile, OFS);
 	memset(&hdr,0,sizeof(LE_Header));
 #ifdef _WC_
 	hdr.Signature='EL';
@@ -89,12 +93,12 @@ int sizeb;
 	hdr.Bytes_On_Last_Page=outptr%0x1000;
 	hdr.Object_Table_Offset=sizeof(LE_Header);
 	hdr.Object_Table_Entries=2;
-	headerofs=ftell(hout);
-	if(fwrite(&hdr,sizeof(LE_Header),1,hout)!=1){
+	headerofs = OFS.tellp();
+	OFS.write((const char *) &hdr, sizeof(LE_Header));
+	if (OFS.bad()) {
 errwrite:
 		ErrWrite();
-		fclose(hout);
-		hout=NULL;
+		OFS.close();
 		return(-1);
 	}
 
@@ -108,7 +112,9 @@ errwrite:
 	ot[1].ObjTableFlags=0x2043;
 	ot[1].Page_MAP_Index=2;
 	ot[0].Reserved=ot[1].Reserved=ot[1].Page_MAP_Entries=0;
-	if(fwrite(&ot,sizeof(Object_Table)*2,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) &ot, sizeof(Object_Table) * 2);
+	if (OFS.bad())
+		goto errwrite;
 	hdr.Object_Page_Map_Table_Offset=headsize+=sizeof(Object_Table)*2;
 
 	sizeb=sizeof(Page_Map_Table)*hdr.Number_Of_Memory_Pages;
@@ -118,15 +124,19 @@ errwrite:
 		(pmt+i)->Low_Page_Number=(unsigned char)((i+1)%256);
 		(pmt+i)->FLAGS=0;
 	}
-	if(fwrite(pmt,sizeb,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) pmt, sizeb);
+	if (OFS.bad())
+		goto errwrite;
 	free(pmt);
 	hdr.Resource_Table_Offset=hdr.Resident_Names_Table_Offset=headsize+=sizeb;
 
 	i = RawFileName.size();
 	String2[0]=(unsigned char)i;
-	strcpy((char *) &String2[1], RawFileName.c_str());
+	strcpy((char *) &String2[1], RawFileName.string().c_str()); // FIXME: Convert to proper codepage on Windows [?]
 	*(long *)&String2[i+2]=0;
-	if(fwrite(String2,i+5,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) String2, i + 5);
+	if (OFS.bad())
+		goto errwrite;
 
 	hdr.Entry_Table_Offset=headsize+=i+4;
 	headsize++;
@@ -137,7 +147,9 @@ errwrite:
 //	for(i=0;i<(hdr.Number_Of_Memory_Pages+1);i++){
 //		fpto[i]=0;
 //	}
-	if(fwrite(fpto,sizeb,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) fpto, sizeb);
+	if (OFS.bad())
+		goto errwrite;
 	headsize+=sizeb;
 
 //Fixup_Record_Table
@@ -165,7 +177,9 @@ int sizefixpage=0;
 					sizerec=9;
 				}
 				sizefixpage+=sizerec;
-				if(fwrite(String2,sizerec,1,hout)!=1)goto errwrite;
+				OFS.write((const char *) String2, sizerec);
+				if (OFS.bad())
+					goto errwrite;
 			}
 			fpto[i+1]=sizefixpage;
 		}
@@ -176,7 +190,9 @@ int sizefixpage=0;
 	hdr.Imported_Module_Names_Table_Offset=
 			hdr.Imported_Procedure_Name_Table_Offset=headsize;
 	String2[0]=0;
-	if(fwrite(String2,1,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) String2, 1);
+	if (OFS.bad())
+		goto errwrite;
 	headsize++;
 
 
@@ -184,14 +200,18 @@ int sizefixpage=0;
 	hdr.Loader_Section_Size=headsize-sizeof(LE_Header);
 	hdr.Automatic_Data_Object=2;
 	hdr.Data_Pages_Offset=Align(headsize+headerofs,16/*1024*/);
-	ChSize(hdr.Data_Pages_Offset);
+	chSize(hdr.Data_Pages_Offset, OFS);
 
-	fseek(hout,headerofs,SEEK_SET);
-	if(fwrite(&hdr,sizeof(LE_Header),1,hout)!=1)goto errwrite;
-	fseek(hout,headerofs+hdr.Fixup_Page_Table_Offset,SEEK_SET);
-	if(fwrite(fpto,sizeof(unsigned long)*(hdr.Number_Of_Memory_Pages+1),1,hout)!=1)goto errwrite;
+	OFS.seekp(headerofs);
+	OFS.write((const char *) &hdr, sizeof(LE_Header));
+	if (OFS.bad())
+		goto errwrite;
+	OFS.seekp(headerofs + hdr.Fixup_Page_Table_Offset);
+	OFS.write((const char *) fpto, sizeof(unsigned long) * (hdr.Number_Of_Memory_Pages + 1));
+	if (OFS.bad())
+		goto errwrite;
 	free(fpto);
 
-	fseek(hout,0,SEEK_END);
+	OFS.seekp(0, std::ios_base::end);
 	return 0;
 }

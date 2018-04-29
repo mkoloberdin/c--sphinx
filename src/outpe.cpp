@@ -141,7 +141,7 @@ void AddJmpApi()
 	outptrdata=outptr;
 }
 
-int MakePE()
+int makePE(fs::ofstream &OFS)
 {
 unsigned short numobj=1;
 char *importblock=NULL;
@@ -158,7 +158,8 @@ unsigned int relocnum=0;	//номер секции перемещений
 unsigned int importnum=0;	//номер секции импорта
 unsigned int codenum=0;	//номер секции кода
 unsigned int resnum=0;	//номер секции ресурсов
-	if(hout==NULL)return -1;
+	if (!OFS.is_open())
+		return -1;
 	if(WinMonoBlock==FALSE){
 		vsize=Align(outptr+(wbss==FALSE?postsize:0),OBJECTALIGN);//виртуальный размер секции кода
 		psize=Align(outptr,FILEALIGN);	//физический размер секции кода
@@ -284,7 +285,7 @@ unsigned int resnum=0;	//номер секции ресурсов
 		*(long *)&exportblock[32]=startsece+sizeof(EXPORT_TABLE)+numexport*4;//Name Pointers RVA
 		*(long *)&exportblock[36]=startsece+sizeof(EXPORT_TABLE)+numexport*8;//Ordinal Table RVA
 		char *oname;
-		strcpy((char *) String2, RawFileName.c_str());
+		strcpy((char *) String2, RawFileName.string().c_str()); // FIXME: Convert to proper codepage on Windows [?]
 		oname=strrchr((char *)String2,'\\');
 		if(oname==NULL)oname=(char *)String2;
 		else oname=oname+1;
@@ -476,62 +477,73 @@ unsigned int resnum=0;	//номер секции ресурсов
 		peheader->fixupRVA=startsecr;
 		peheader->fixupSize=posrel;
 	}
-	if(fwrite(peheader,sizeof(PE_HEADER),1,hout)!=1){
+	OFS.write((const char *) peheader, sizeof(PE_HEADER));
+	if (OFS.bad()) {
 errwrite:
 		ErrWrite();
-		fclose(hout);
-		hout=NULL;
+		OFS.close();
 		return(-1);
 	}
-	if(fwrite(objentry,sizeof(OBJECT_ENTRY)*numobj,1,hout)!=1)goto errwrite;
-	ChSize(sizehead);
+	OFS.write((const char *) objentry, sizeof(OBJECT_ENTRY) * numobj);
+	if (OFS.bad())
+		goto errwrite;
+	chSize(sizehead, OFS);
 	runfilesize=sizehead+psize;
-	outputcodestart=ftell(hout);
-	if(fwrite(output,outptr,1,hout)!=1)goto errwrite;	//блок кода
+	outputcodestart = OFS.tellp();
+	OFS.write((const char *) output, outptr);    //блок кода
+	if (OFS.bad())
+		goto errwrite;
 	if(!WinMonoBlock){
 		filingzerope=psize-outptr;
-		ChSize(runfilesize);
+		chSize(runfilesize, OFS);
 	}
 	if(numapi){
-		if(fwrite(importblock,sizeimport,1,hout)!=1)goto errwrite;
+		OFS.write((const char *) importblock, sizeimport);
+		if (OFS.bad())
+			goto errwrite;
 		free(importblock);
 	}
 	if(numexport){
-		if(fwrite(exportblock,sizeexport,1,hout)!=1)goto errwrite;
+		OFS.write(exportblock, sizeexport);
+		if (OFS.bad())
+			goto errwrite;
 		free(exportblock);
 	}
 	if(numres){
-		if(fwrite(resbuf,sizeres,1,hout)!=1)goto errwrite;
+		OFS.write((const char *) resbuf, sizeres);
+		if (OFS.bad())
+			goto errwrite;
 		free(resbuf);
 	}
 	if(posrel){
-		if(WinMonoBlock&&dllflag)ChSize(runfilesize);
-		if(fwrite(relocblock,sizereloc,1,hout)!=1)goto errwrite;
+		if(WinMonoBlock&&dllflag)chSize(runfilesize, OFS);
+		OFS.write(relocblock, sizereloc);
+		if (OFS.bad())
+			goto errwrite;
 		free(relocblock);
 	}
 	if(WinMonoBlock){
 		if(dllflag)runfilesize+=sizereloc;
 	}
 	else runfilesize+=sizereloc+sizeimport+sizeexport+sizeres;
-	ChSize(runfilesize);
+	chSize(runfilesize, OFS);
 	free(peheader);
 	free(objentry);
-	fclose(hout);
-	hout=NULL;
+	OFS.close();
 	ImageBase+=vsizeheader+sizebss;	//изм размер для листинга
 	return 0;
 }
 
-void ChSize(long size)
+void chSize(long size, fs::ofstream &OFS)
 {
 char buf[256];
 long delta,ssave;
 	memset(buf,0,256);
-	delta=size-ftell(hout);
+	delta = size - OFS.tellp();
 	while(delta>0){
 		ssave=256;
 		if(delta<256)ssave=delta;
-		fwrite(buf,ssave,1,hout);
+		OFS.write(buf, ssave);
 		delta-=ssave;
 	}
 }
@@ -551,17 +563,21 @@ unsigned int a;
 	return a;
 }
 
-void CreatWinStub()
+void createWinStub()
 {
+    fs::ofstream OFS;
 	if(!usestub){
 		sizestub=SIZESTUB2;
-		hout= createOutPut(outext, "wb");
-		if(fwrite(stub2,SIZESTUB2,1,hout)!=1){
+		fs::path Filename = makeOutputFilename(outext);
+		OFS.open(Filename, std::ios_base::binary);
+		dieIfNotOpen(Filename, OFS);
+        OFS.write(stub2, SIZESTUB2);
+		if (OFS.bad()) {
 			ErrWrite();
 			return;
 		}
 	}
-	else createStub(winstub);
+	else createStub(winstub, OFS);
 //подсчитать число секций
 	if(wbss){
 		if(postsize)numrs++;
@@ -709,14 +725,17 @@ errread:
 	fclose(infile);
 }
 
-void createStub(const std::string &Name)
+void createStub(const fs::path &Name, fs::ofstream &OFS)
 {
 	sizestub=SIZESTUB;
-	hout= createOutPut(outext, "wb");
-	sprintf((char *)&stub[STRVERS],"%s%s",compilerstr,__DATE__);
+	fs::path Filename = makeOutputFilename(outext);
+	OFS.open(Filename, std::ios_base::binary);
+	dieIfNotOpen(Filename, OFS);
+    sprintf((char *)&stub[STRVERS],"%s%s",compilerstr,__DATE__);
     if (Name.empty()) {
 stdstub:
-		if(fwrite(stub,SIZESTUB,1,hout)!=1){
+		OFS.write((const char *) stub, SIZESTUB);
+		if (OFS.bad()) {
 errwrite:
 			ErrWrite();
 			return;
@@ -724,32 +743,37 @@ errwrite:
 	}
 	else{
 EXE_DOS_HEADER exeheader;  // header for EXE format
-FILE *stubin;
-		if((stubin=fopen(Name.c_str(),"rb"))==NULL){
+		fs::ifstream IFS(Name, std::ios_base::binary);
+		if(IFS.bad()){
             errOpenFile(Name);
 			goto stdstub;
 		}
-		if(fread(&exeheader,sizeof(EXE_DOS_HEADER),1,stubin)!=1){
+		IFS.read((char *) &exeheader, sizeof(EXE_DOS_HEADER));
+		if (IFS.bad()) {
 errread:
 			ErrReadStub();
-			fclose(stubin);
+			IFS.close();
 			goto stdstub;
 		}
 		if(exeheader.sign!=0x5A4D){
 errstub:
 			fprintf(stderr,"File %s can not be stub file.\n",Name);
-			fclose(stubin);
+			IFS.close();
 			goto stdstub;
 		}
-		fseek(stubin,0,SEEK_END);
-		sizestub=ftell(stubin);
+		IFS.seekg(0, std::ios_base::end);
+		sizestub = IFS.tellg();
 		unsigned long temp;
 		if(exeheader.ofsreloc>=0x40){	//проверка что это не 32-битный файл
-			fseek(stubin,0x3c,SEEK_SET);
-			if(fread(&temp,4,1,stubin)!=1)goto errread;
+			IFS.seekg(0x3c);
+			IFS.read((char *) &temp, 4);
+			if (IFS.bad())
+				goto errread;
 			if(temp<sizestub){
-				fseek(stubin,temp,SEEK_SET);
-				if(fread(&temp,4,1,stubin)!=1)goto errread;
+				IFS.seekg(temp);
+				IFS.read((char *) &temp, 4);
+				if (IFS.bad())
+					goto errread;
 				switch(temp){
 #ifdef _WC_
 					case 'EP':
@@ -770,13 +794,17 @@ errstub:
 		else exeheader.ofsreloc=0x40;
 		//размер файла
 		sizestub=Align(sizestub+32,8);
-		fseek(stubin,0x20,SEEK_SET);
+		IFS.seekg(0x20);
 		exeheader.headsize+=(unsigned short)2;
-		if(fwrite(&exeheader,sizeof(EXE_DOS_HEADER),1,hout)!=1)goto errwrite;
+		OFS.write((const char *) &exeheader, sizeof(EXE_DOS_HEADER));
+		if (OFS.bad())
+			goto errwrite;
 		*(unsigned long *)&stub[STRVERS+28]=sizestub;
-		if(fwrite(&stub[STRVERS],32,1,hout)!=1)goto errwrite;
-		CopyFile(stubin,hout);
-		ChSize(sizestub);
+		OFS.write((const char *) &stub[STRVERS], 32);
+		if (OFS.bad())
+			goto errwrite;
+		copyStream(IFS, OFS);
+		chSize(sizestub, OFS);
 	}
 }
 
@@ -867,8 +895,6 @@ void FreeCoffBuf()
 	free(isymbol);
 	free(NameId);
 	free(treloc);
-	fclose(hout);
-	hout=NULL;
 }
 
 void IncReloc()
@@ -916,7 +942,7 @@ void CreatRelocTable()
 	}
 }
 
-int MakeCoff()
+int makeCoff()
 {
 COFF_HEADER chead;
 unsigned long sizehead,curobj,resnum,numresrel,segres,lastoffset,headernum;
@@ -924,7 +950,9 @@ OBJECT_ENTRY *objentry;
 int i;
 LISTRELOC *resrel=NULL;
 	const char *codesecname;
-	hout= createOutPut("obj", "wb");
+	fs::path Filename = makeOutputFilename("obj");
+	fs::ofstream OFS(Filename, std::ios_base::binary);
+	dieIfNotOpen(Filename, OFS);
 	chead.cpu=0x14c;
 	chead.SizeOfOptionalHeader=0;
 	chead.date_time=0;
@@ -995,7 +1023,7 @@ LISTRELOC *resrel=NULL;
 	(isymbol+1)->StorageClass=0x67;
 	i = (FilesInfo[0].Filename.size() - 1) / sizeof(IMAGE_SYMBOL) + 1;
 	(isymbol+1)->NumberOfAuxSymbols=i;
-	strcpy((isymbol + 2)->N.sname, FilesInfo[0].Filename.c_str());
+	strcpy((isymbol + 2)->N.sname, FilesInfo[0].Filename.string().c_str()); // FIXME: Convert to proper codepage on Windows [?]
 	numsymbol=i+2;
 	segtext=numsymbol;
 	strcpy((isymbol+numsymbol)->N.sname,codesecname);
@@ -1055,24 +1083,36 @@ LISTRELOC *resrel=NULL;
 	if(numsymbol){
 		chead.pCOFF=lastoffset;
 	}
-	if(fwrite(&chead,sizeof(COFF_HEADER),1,hout)!=1){
+	OFS.write((const char *) &chead, sizeof(COFF_HEADER));
+	if (OFS.bad()) {
 errwrite:
 		ErrWrite();
 		free(objentry);
 		if(resrel)free(resrel);
 		FreeCoffBuf();
+		OFS.close();
 		return(-1);
 	}
-	if(fwrite(objentry,sizehead,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) objentry, sizehead);
+	if (OFS.bad())
+		goto errwrite;
 //	if(header){
-		if(fwrite(&stub[STRVERS],(objentry+headernum)->psize,1,hout)!=1)goto errwrite;
+	OFS.write((const char *) &stub[STRVERS], (objentry + headernum)->psize);
+	if (OFS.bad())
+		goto errwrite;
 //	}
-	if(fwrite(output,outptr,1,hout)!=1)goto errwrite;	//блок кода
+	OFS.write((const char *) output, outptr);	//блок кода
+	if (OFS.bad())
+		goto errwrite;
 	if(numreloc){
-		if(fwrite(treloc,numreloc*sizeof(IMAGE_RELOCATION),1,hout)!=1)goto errwrite;
+		OFS.write((const char *) treloc, numreloc * sizeof(IMAGE_RELOCATION));
+		if (OFS.bad())
+			goto errwrite;
 	}
 	if(numres){
-		if(fwrite(resbuf,curposbuf,1,hout)!=1)goto errwrite;
+		OFS.write((const char *) resbuf, curposbuf);
+		if (OFS.bad())
+			goto errwrite;
 		free(resbuf);
 		if(numresrel){
 			IMAGE_RELOCATION *rrel;
@@ -1082,19 +1122,29 @@ errwrite:
 				(rrel+i)->Type=IMAGE_REL_I386_DIR32NB;
 				(rrel+i)->SymbolTableIndex=segres;
 			}
-			if(fwrite(rrel,sizeof(IMAGE_RELOCATION)*numresrel,1,hout)!=1)goto errwrite;
+			OFS.write((const char *) rrel, sizeof(IMAGE_RELOCATION) * numresrel);
+			if (OFS.bad())
+				goto errwrite;
 			free(rrel);
 		}
 	}
 	if(numsymbol){
-		if(fwrite(isymbol,numsymbol*sizeof(IMAGE_SYMBOL),1,hout)!=1)goto errwrite;
+		OFS.write((const char *) isymbol, numsymbol * sizeof(IMAGE_SYMBOL));
+		if (OFS.bad())
+			goto errwrite;
 		if(sizelistName){
 			sizelistName+=4;
-			if(fwrite(&sizelistName,4,1,hout)!=1)goto errwrite;
-			if(fwrite(ListName,sizelistName-4,1,hout)!=1)goto errwrite;
+			OFS.write((const char *) &sizelistName, 4);
+			if (OFS.bad())
+				goto errwrite;
+			OFS.write(ListName, sizelistName-4);
+			if (OFS.bad())
+				goto errwrite;
 		}
 		else{
-			if(fwrite(&sizelistName,4,1,hout)!=1)goto errwrite;
+			OFS.write((const char *) &sizelistName, 4);
+			if (OFS.bad())
+				goto errwrite;
 			sizelistName+=4;
 		}
 	}
@@ -1102,5 +1152,6 @@ errwrite:
 	free(objentry);
 	if(resrel)free(resrel);
 	FreeCoffBuf();
+	OFS.close();
 	return 0;
 }

@@ -307,7 +307,7 @@ typedef struct _EXPORT_TABLE_
 	unsigned long OrdinalRVA;
 }EXPORT_TABLE;
 
-#if !defined(__WIN32__)
+#if 1
 struct ftime {
 	unsigned ft_tsec:5;  /* две секунды */
 	unsigned ft_min:6;   /* минуты */
@@ -344,7 +344,9 @@ struct FILEINFO
 };
 
 struct EWAR{
+    EWAR(FILE *_file, const fs::path &_Name) : file(_file), Name(_Name) {}
 	FILE *file;
+	fs::ofstream OFS; // TODO: Remove the above field once everything is migrated to fs::ofstream
 	fs::path Name;
 };
 

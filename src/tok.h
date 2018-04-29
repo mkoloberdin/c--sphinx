@@ -104,7 +104,7 @@ extern unsigned char dpmistub;
 extern unsigned char useordinal;
 extern int startupfile;
 extern int alignproc,aligncycle;
-extern FILE *hout;
+//extern FILE *hout;
 extern unsigned char useDOS4GW;
 extern unsigned char use_env;	//переменная окружения
 extern unsigned char clearpost;
@@ -326,15 +326,17 @@ int SelectComand(char *pptr,int *count);
 void strbtrim(char *st);
 unsigned long  Align(unsigned long size,unsigned long val);
 int AlignCD(char segm,int val);	//выравнять данные или код
-void errOpenFile(const fs::path &Str);
+void errOpenFile(const fs::path &Filename);
 unsigned int EntryPoint();
+void copyStream(fs::ifstream &IFS, fs::ofstream &OFS);
 long CopyFile(FILE *in,FILE *out);
 unsigned long getnumber(unsigned char *buf);
 void addinitvar();
-FILE *createOutPut(const fs::path &Ext, const char *Mode);
+fs::path makeOutputFilename(const fs::path &Ext);
+void dieIfNotOpen(fs::path &Filename, fs::ofstream &OFS);
 void SetLST(unsigned char neg);
 void AddUndefClassProc();
-int MakeCoff();
+int makeCoff();
 void setdindata(idrec *ptr,int i);
 
 /*-----------------08.03.98 20:10-------------------
@@ -670,8 +672,8 @@ void mapfun(int);
 /*-----------------24.01.01 01:42-------------------
  disasm.cpp
 	--------------------------------------------------*/
-void undata(unsigned ofs,unsigned long len,unsigned int type);
-void unassemble(unsigned long ofs);
+void undata(unsigned offset, unsigned long len, unsigned int type, fs::ofstream &OFS);
+void unassemble(unsigned long offset, fs::ofstream &OFS);
 
 /*-----------------25.01.01 23:02-------------------
  debug.cpp
@@ -691,16 +693,16 @@ void printdebuginfo();
 /*-----------------12.04.01 22:46-------------------
  outpe
 	--------------------------------------------------*/
-void createStub(const std::string &Name);
-void CreatWinStub();
-void ChSize(long size);
+void createStub(const fs::path &Name, fs::ofstream &OFS);
+void createWinStub();
+void chSize(long size, fs::ofstream &OFS);
 
 /*-----------------12.04.01 22:57-------------------
  outle
 	--------------------------------------------------*/
-int MakeLE();
-int MakeMEOS();
-int MakeBin32();
+int makeLE(fs::ofstream &OFS);
+int makeMEOS(fs::ofstream &OFS);
+int makeBin32(fs::ofstream &OFS);
 
 /*-----------------08.12.01 23:43-------------------
  pointer

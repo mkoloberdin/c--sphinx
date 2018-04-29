@@ -1,4 +1,5 @@
 #include <string>
+using namespace std::string_literals;
 #include <vector>
 #include "tok.h"
 #include "coff.h"
@@ -352,8 +353,7 @@ unsigned char *buf;
 IMAGE_RELOCATION *trel;
 	head=(COFF_HEADER *)input;
 	if(head->cpu!=0x14C){
-		sprintf((char *)String,"file %s is not supported format",curobjname);
-		prError((char *) String);
+		prError("file "s + curobjname.string() + " is not supported format"s);
 		return;
 	}
 	if(comfile!=file_w32){

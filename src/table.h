@@ -15,18 +15,18 @@ typedef union{
 }WORD32;
 
 /* prototypes */
-void ua_str(const char *);
-unsigned char getbyte(void);
-int modrm();
-int sib();
+void ua_str(const char *, fs::ofstream &OFS);
+unsigned char getByte(fs::ofstream &OFS);
+int modrm(fs::ofstream &OFS);
+int sib(fs::ofstream &OFS);
 void uprintf(const char *, ...);
 void uputchar(char );
 int bytes(char );
-void outhex(char , int , int , int , int );
+void outhex(char, int, int, int, int, fs::ofstream &OFS);
 void reg_name(int , char );
-void do_sib(int );
-void do_modrm(char );
-void floating_point(int );
-void percent(char , char );
-void undata(unsigned ofs,unsigned long len,unsigned int type);
+void do_sib(int, fs::ofstream &OFS);
+void do_modrm(char, fs::ofstream &OFS);
+void floating_point(int, fs::ofstream &OFS);
+void percent(char, char, fs::ofstream &OFS);
+void undata(unsigned offset, unsigned long len, unsigned int type, fs::ofstream &OFS);
 

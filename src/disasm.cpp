@@ -593,25 +593,27 @@ WORD32 adr;
   }
 }
 
-unsigned char getbyte(void)
+unsigned char getByte(fs::ofstream &OFS)
 {
-short c;
+  uint8_t c;
   c=output[outptr++];
-  fprintf(hout,"%02X", c);   /* print out byte */
+  char tmp[3];
+  sprintf(tmp,"%02X", c);   /* print out byte */
+  OFS << tmp;
   col+=2;
   instruction_offset++;
   return c;
 }
 
-int modrm()
+int modrm(fs::ofstream &OFS)
 {
-  if (modrmv == -1) modrmv = getbyte();
+  if (modrmv == -1) modrmv = getByte(OFS);
   return modrmv;
 }
 
-int sib()
+int sib(fs::ofstream &OFS)
 {
-  if (sibv == -1) sibv = getbyte();
+  if (sibv == -1) sibv = getByte(OFS);
   return sibv;
 }
 
@@ -655,7 +657,7 @@ int bytes(char c)
 }
 
 /*------------------------------------------------------------------------*/
-void outhex(char subtype, int extend, int optional, int defsize, int sign)
+void outhex(char subtype, int extend, int optional, int defsize, int sign, fs::ofstream &OFS)
 {
 int n=0, s=0, i;
 long delta;
@@ -699,7 +701,7 @@ char  signchar;
        s = 1;
        break;
   }
-  for (i=0; i<n; i++) buff[i] = getbyte();
+  for (i=0; i<n; i++) buff[i] = getByte(OFS);
   for(;i<extend;i++)buff[i]=(buff[i-1]&0x80)?(unsigned char)0xff:(unsigned char)0;
   if (s) {
     uprintf("%02X%02X:", buff[n-1], buff[n-2]);
@@ -809,27 +811,34 @@ void reg_name(int regnum, char size)
 }
 
 /*------------------------------------------------------------------------*/
-void do_sib(int m)
+void do_sib(int m, fs::ofstream &OFS)
 {
 int s, i, b;
-  s = SCALE(sib());
-  i = INDEX(sib());
-  b = BASE(sib());
+  s = SCALE(sib(OFS));
+  i = INDEX(sib(OFS));
+  b = BASE(sib(OFS));
   switch (b) {     /* pick base */
-  case 0: ua_str("%p:[eax"); break;
-  case 1: ua_str("%p:[ecx"); break;
-  case 2: ua_str("%p:[edx"); break;
-  case 3: ua_str("%p:[ebx"); break;
-  case 4: ua_str("%p:[esp"); break;
+  case 0:
+	  ua_str("%p:[eax", OFS); break;
+  case 1:
+	  ua_str("%p:[ecx", OFS); break;
+  case 2:
+	  ua_str("%p:[edx", OFS); break;
+  case 3:
+	  ua_str("%p:[ebx", OFS); break;
+  case 4:
+	  ua_str("%p:[esp", OFS); break;
   case 5:
        if (m == 0) {
-         ua_str("%p:[");
-         outhex('d', 4, 0, addrsize, 0);
+		   ua_str("%p:[", OFS);
+		   outhex('d', 4, 0, addrsize, 0, OFS);
        }
-			 else ua_str("%p:[ebp");
+			 else ua_str("%p:[ebp", OFS);
        break;
-  case 6: ua_str("%p:[esi"); break;
-  case 7: ua_str("%p:[edi"); break;
+  case 6:
+	  ua_str("%p:[esi", OFS); break;
+  case 7:
+	  ua_str("%p:[edi", OFS); break;
   }
   switch (i) {     /* and index */
   case 0: uprintf("+eax"); break;
@@ -852,40 +861,40 @@ int s, i, b;
 }
 
 /*------------------------------------------------------------------------*/
-void do_modrm(char subtype)
+void do_modrm(char subtype, fs::ofstream &OFS)
 {
-int mod = MOD(modrm());
-int rm = RM(modrm());
+int mod = MOD(modrm(OFS));
+int rm = RM(modrm(OFS));
 int extend = (addrsize == 32) ? 4 : 2;
   if (mod == 3) { /* specifies two registers */
     reg_name(rm, subtype);
     return;
   }
   if (must_do_size) {
-		if(qwordop)ua_str("qword ptr ");
+		if(qwordop)ua_str("qword ptr ", OFS);
 		else{
 	    if (wordop) {
   	    if (/*addrsize==32 ||*/ opsize==32) {       /* then must specify size */
-    	    ua_str("dword ptr ");
+			ua_str("dword ptr ", OFS);
       	}
-				else ua_str("word ptr ");
+				else ua_str("word ptr ", OFS);
   	  }
-			else ua_str("byte ptr ");
+			else ua_str("byte ptr ", OFS);
 		}
   }
   if ((mod == 0) && (rm == 5) && (addrsize == 32)) {/* mem operand with 32 bit ofs */
-    ua_str("%p:[");
-    outhex('d', extend, 0, addrsize, 0);
+	  ua_str("%p:[", OFS);
+	  outhex('d', extend, 0, addrsize, 0, OFS);
     uputchar(']');
     return;
   }
   if ((mod == 0) && (rm == 6) && (addrsize == 16)) { /* 16 bit dsplcmnt */
-    ua_str("%p:[");
-    outhex('w', extend, 0, addrsize, 0);
+	  ua_str("%p:[", OFS);
+	  outhex('w', extend, 0, addrsize, 0, OFS);
     uputchar(']');
     return;
   }
-  if ((addrsize != 32) || (rm != 4)) ua_str("%p:[");
+  if ((addrsize != 32) || (rm != 4)) ua_str("%p:[", OFS);
   if (addrsize == 16) {
     switch (rm) {
     case 0: uprintf("bx+si"); break;
@@ -904,7 +913,8 @@ int extend = (addrsize == 32) ? 4 : 2;
     case 1: uprintf("ecx"); break;
     case 2: uprintf("edx"); break;
     case 3: uprintf("ebx"); break;
-    case 4: do_sib(mod); break;
+    case 4:
+		do_sib(mod, OFS); break;
     case 5: uprintf("ebp"); break;
     case 6: uprintf("esi"); break;
     case 7: uprintf("edi"); break;
@@ -912,87 +922,87 @@ int extend = (addrsize == 32) ? 4 : 2;
   }
   switch (mod) {
   case 1:
-       outhex('b', extend, 1, addrsize, 0);
+	  outhex('b', extend, 1, addrsize, 0, OFS);
        break;
   case 2:
-       outhex('v', extend, 1, addrsize, 1);
+	  outhex('v', extend, 1, addrsize, 1, OFS);
        break;
   }
   uputchar(']');
 }
 
 /*------------------------------------------------------------------------*/
-void floating_point(int e1)
+void floating_point(int e1, fs::ofstream &OFS)
 {
-int esc = e1*8 + REG(modrm());
-  if(MOD(modrm())==3){	//2-Й БАЙТ>C0
+int esc = e1*8 + REG(modrm(OFS));
+  if(MOD(modrm(OFS)) == 3){	//2-Й БАЙТ>C0
     if (fspecial[esc]) {
-      if (fspecial[esc][0]!=NULL&&fspecial[esc][0][0] == '*')ua_str(fspecial[esc][0]+1);
-      else ua_str(fspecial[esc][RM(modrm())]);
+      if (fspecial[esc][0]!=NULL&&fspecial[esc][0][0] == '*')ua_str(fspecial[esc][0] + 1, OFS);
+      else ua_str(fspecial[esc][RM(modrm(OFS))], OFS);
     }
 		else {
-      ua_str(floatops[esc]);
-      ua_str(" %EF");
+		ua_str(floatops[esc], OFS);
+		ua_str(" %EF", OFS);
     }
   }
 	else {
-    ua_str(floatops[esc]);
-    ua_str(" %EF");
+	  ua_str(floatops[esc], OFS);
+	  ua_str(" %EF", OFS);
   }
 }
 
 /*------------------------------------------------------------------------*/
 /* Main table driver                                                      */
-void percent(char type, char subtype)
+void percent(char type, char subtype, fs::ofstream &OFS)
 {
 long vofs;
 int extend =(addrsize==32)?4:2;
 unsigned char c;
 	switch (type) {
 	case 'A':                          /* direct address */
-		outhex(subtype,extend,0,addrsize,0);
+		outhex(subtype, extend, 0, addrsize, 0, OFS);
 		break;
 	case 'C':                          /* reg(r/m) picks control reg */
-		uprintf("CR%d",REG(modrm()));
+		uprintf("CR%d",REG(modrm(OFS)));
 		must_do_size=0;
 		break;
   case 'D':                          /* reg(r/m) picks debug reg */
-       uprintf("DR%d", REG(modrm()));
+       uprintf("DR%d", REG(modrm(OFS)));
        must_do_size = 0;
        break;
   case 'E':                          /* r/m picks operand */
 			 if(subtype=='m')must_do_size=0;
-       do_modrm(subtype);
+			do_modrm(subtype, OFS);
        break;
 	case 'F':
-			 if(MOD(modrm())!=3)do_modrm(subtype);
-			 else reg_name(REG(modrm()),subtype);
+			 if(MOD(modrm(OFS)) != 3)do_modrm(subtype, OFS);
+			 else reg_name(REG(modrm(OFS)), subtype);
 			 break;
   case 'G':                          /* reg(r/m) picks register */
 /*       if (subtype == 'F'||subtype == 'M')
          reg_name(RM(modrm()), subtype);
        else reg_name(REG(modrm()), subtype);*/
-       reg_name(RM(modrm()),subtype);
+       reg_name(RM(modrm(OFS)), subtype);
        must_do_size = 0;
        break;
   case 'I':                            /* immed data */
-       outhex(subtype, 0, 0, opsize, 0);
+	  outhex(subtype, 0, 0, opsize, 0, OFS);
        break;
   case 'J':                            /* relative IP offset */
        switch(bytes(subtype)) {              /* sizeof offset value */
        case 1:
-						vofs=(signed char)getbyte();
+						vofs=(signed char) getByte(OFS);
             break;
        case 2:
-            vofs = getbyte();
-            vofs += getbyte()<<8;
+            vofs = getByte(OFS);
+            vofs += getByte(OFS) << 8;
             vofs = (short)vofs;
             break;
        case 4:
-            vofs = (unsigned long)getbyte();           /* yuk! */
-            vofs |= (unsigned long)getbyte() << 8;
-            vofs |= (unsigned long)getbyte() << 16;
-            vofs |= (unsigned long)getbyte() << 24;
+            vofs = (unsigned long) getByte(OFS);           /* yuk! */
+            vofs |= (unsigned long) getByte(OFS) << 8;
+            vofs |= (unsigned long) getByte(OFS) << 16;
+            vofs |= (unsigned long) getByte(OFS) << 24;
             break;
        }
        addr_to_hex(vofs+instruction_offset,seg_size==16?(unsigned char)1:(unsigned char)0);
@@ -1001,44 +1011,44 @@ unsigned char c;
 			 if(seg_size==16){
 	       switch(subtype){
   	     case 'f':
-    	        ua_str("far ");
+			 ua_str("far ", OFS);
       	      break;
 	       case 'n':
-  	          ua_str("near ");
+			   ua_str("near ", OFS);
     	        break;
       	 case 's':
-        	    ua_str("short ");
+			 ua_str("short ", OFS);
           	  break;
 	       }
 			 }
-			 else if(subtype=='s')ua_str("short ");
+			 else if(subtype=='s')ua_str("short ", OFS);
        break;
 	case 'L':
-			 if(MOD(modrm())!=3)reg_name(REG(modrm()),subtype);
-			 else reg_name(RM(modrm()),subtype);
+			 if(MOD(modrm(OFS)) != 3)reg_name(REG(modrm(OFS)), subtype);
+			 else reg_name(RM(modrm(OFS)), subtype);
 			 break;
   case 'M':                            /* r/m picks memory */
-       do_modrm(subtype);
+	  do_modrm(subtype, OFS);
        break;
   case 'O':                            /* offset only */
-       ua_str("%p:[");
-       outhex(subtype, extend, 0, addrsize, 0);
+	  ua_str("%p:[", OFS);
+			outhex(subtype, extend, 0, addrsize, 0, OFS);
        uputchar(']');
        break;
   case 'P':                            /* prefix byte (rh) */
-       ua_str("%p:");
+	  ua_str("%p:", OFS);
        break;
   case 'R':                            /* mod(r/m) picks register */
-       reg_name(REG(modrm()), subtype);      /* rh */
+       reg_name(REG(modrm(OFS)), subtype);      /* rh */
        must_do_size = 0;
        break;
   case 'S':                            /* reg(r/m) picks segment reg */
-       uputchar("ecsdfg"[REG(modrm())]);
+       uputchar("ecsdfg"[REG(modrm(OFS))]);
        uputchar('s');
        must_do_size = 0;
        break;
   case 'T':                            /* reg(r/m) picks T reg */
-       uprintf("tr%d", REG(modrm()));
+       uprintf("tr%d", REG(modrm(OFS)));
        must_do_size = 0;
        break;
   case 'X':                            /* ds:si type operator */
@@ -1052,9 +1062,9 @@ unsigned char c;
        uprintf("di]");
        break;
   case '2':
-			 c=getbyte();          /* old [pop cs]! now indexes */
+			 c= getByte(OFS);          /* old [pop cs]! now indexes */
 			wordop = c & 1;
-       ua_str(second[c]);      /* instructions in 386/486   */
+			ua_str(second[c], OFS);      /* instructions in 386/486   */
        break;
   case 'd':                             /* sizeof operand==dword? */
        if (opsize == 32) uputchar('d');
@@ -1071,7 +1081,7 @@ unsigned char c;
 			 else uputchar(subtype);
        break;
   case 'f':                    /* '87 opcode */
-       floating_point(subtype-'0');
+	  floating_point(subtype - '0', OFS);
        break;
   case 'j':
        if (/*addrsize==32 ||*/ opsize==32) /* both of them?! */
@@ -1080,18 +1090,18 @@ unsigned char c;
   case 'g':                            /* modrm group `subtype' (0--7) */
 			 switch(subtype){
 				case '9':
-					vofs=REG(modrm());
+					vofs=REG(modrm(OFS));
 					modrmv=(modrmv&0xC7)|((modrmv&7)<<3);
-					ua_str(groups[9][vofs]);
+					 ua_str(groups[9][vofs], OFS);
 					break;
 				case '6':
-					 if(MOD(modrm())!=3)goto defg;
+					 if(MOD(modrm(OFS)) != 3)goto defg;
 					 switch(modrmv){
 						case 0xc8:
-							ua_str("monitor");
+							ua_str("monitor", OFS);
 							break;
 						case 0xc9:
-							ua_str("mwait");
+							ua_str("mwait", OFS);
 							break;
 						default:
 					    uprintf("<invalid>");
@@ -1104,7 +1114,7 @@ unsigned char c;
 				 	wordop=1;
 				default:
 defg:
-	       ua_str(groups[subtype-'0'][REG(modrm())]);
+	ua_str(groups[subtype - '0'][REG(modrm(OFS))], OFS);
 				 break;
 			 }
        break;
@@ -1117,17 +1127,17 @@ defg:
        case 'g':
        case 's':
             prefix = subtype;
-            c = getbyte();
+            c = getByte(OFS);
             wordop = c & 1;
-            ua_str(opmap1[c]);
+			   ua_str(opmap1[c], OFS);
             break;
        case ':':
             if (prefix) uprintf("%cs:", prefix);
             break;
        case ' ':
-            c = getbyte();
+            c = getByte(OFS);
             wordop = c & 1;
-            ua_str(opmap1[c]);
+			   ua_str(opmap1[c], OFS);
             break;
        }
        break;
@@ -1135,15 +1145,15 @@ defg:
        switch (subtype) {
        case 'a':
             addrsize = 48 - addrsize;
-            c = getbyte();
+            c = getByte(OFS);
             wordop = c & 1;
-            ua_str(opmap1[c]);
+			   ua_str(opmap1[c], OFS);
             break;
        case 'o':
             opsize = 48 - opsize;
-            c = getbyte();
+            c = getByte(OFS);
             wordop = c & 1;
-            ua_str(opmap1[c]);
+			   ua_str(opmap1[c], OFS);
             break;
        }
        break;
@@ -1153,29 +1163,29 @@ defg:
        uputchar(subtype);
        break;
   case 'x':
-			 if(MOD(modrm())==3){
+			 if(MOD(modrm(OFS)) == 3){
 				switch(subtype-'0'){
 					case 0:
-						ua_str("movhlps %RX,%GX");
+						ua_str("movhlps %RX,%GX", OFS);
 						break;
 					case 1:
-						ua_str("movlhps %RX,%GX");
+						ua_str("movlhps %RX,%GX", OFS);
 						break;
 					case 2:
-						ua_str("sfence");
+						ua_str("sfence", OFS);
 						break;
 				}
 			 }
 			 else{
 				switch(subtype-'0'){
 					case 0:
-						ua_str("movlps %RX,%Md");
+						ua_str("movlps %RX,%Md", OFS);
 						break;
 					case 1:
-						ua_str("movhps %RX,%Md");
+						ua_str("movhps %RX,%Md", OFS);
 						break;
 					case 2:
-						ua_str("clflush %Em");
+						ua_str("clflush %Em", OFS);
 						break;
 				}
 			 }
@@ -1186,7 +1196,7 @@ defg:
    }
 }
 
-void ua_str(const char *Str)
+void ua_str(const char *Str, fs::ofstream &OFS)
 {
 char c;
   if (Str == nullptr) {
@@ -1202,7 +1212,7 @@ char c;
 				qwordop=1;
 				Str++;
 			}
-      percent(c,*Str++);
+		percent(c, *Str++, OFS);
     } else {
       if (c == ' ') uputchar('\t');
       else uputchar(c);
@@ -1210,18 +1220,20 @@ char c;
   }
 }
 
-void unassemble(unsigned long ofs)
+void unassemble(unsigned long offset, fs::ofstream &OFS)
 {
 const char *Str;
 int c;
-  fprintf(hout,seg_size==16?"%04X ":"%08lX ",ofs);
+  char tmp[9];
+  sprintf(tmp, seg_size == 16 ? "%04X " : "%08lX ", offset);
+  OFS << tmp;
   prefix = 0;
   modrmv = sibv = -1;     /* set modrm and sib flags */
   opsize = addrsize = seg_size;
   col = 0;
   ubufp = ubuf;
   done_space = 0;
-  c = getbyte();
+  c = getByte(OFS);
 	if(c==0x9B){
 		switch(*(uint16_t *)&output[outptr]){
 			case 0xE0DB:
@@ -1229,23 +1241,23 @@ int c;
 			case 0xE2DB:
 			case 0xE3DB:
 			case 0xE4DB:
-				getbyte();
-			  c=getbyte();
+				getByte(OFS);
+			  c= getByte(OFS);
 				switch(c){
 					case 0xE0:
-						ua_str("feni");
+						ua_str("feni", OFS);
 						break;
 					case 0xE1:
-						ua_str("fdisi");
+						ua_str("fdisi", OFS);
 						break;
 					case 0xE2:
-						ua_str("fclex");
+						ua_str("fclex", OFS);
 						break;
 					case 0xE3:
-						ua_str("finit");
+						ua_str("finit", OFS);
 						break;
 					case 0xE4:
-						ua_str("fsetpm");
+						ua_str("fsetpm", OFS);
 						break;
 				}
 				goto endp;
@@ -1253,31 +1265,31 @@ int c;
 	}
 	else if(c==0x98){
 		if(am32){
-			ua_str("cwde");
+			ua_str("cwde", OFS);
 			goto endp;
 		}
 	}
 	else if(c==0x99){
 		if(am32){
-			ua_str("cdq");
+			ua_str("cdq", OFS);
 			goto endp;
 		}
 	}
 	else if(c==0x66&&am32==0){
 		if(output[outptr]==0x98){
-			ua_str("cwde");
-			getbyte();
+			ua_str("cwde", OFS);
+			getByte(OFS);
 			goto endp;
 		}
 		if(output[outptr]==0x99){
-			ua_str("cdq");
-			getbyte();
+			ua_str("cdq", OFS);
+			getByte(OFS);
 			goto endp;
 		}
 	}
 	else if(c==0xF3&&output[outptr]==0x90){
-		ua_str("pause");
-		getbyte();
+		ua_str("pause", OFS);
+		getByte(OFS);
 		goto endp;
 	}
 	if(output[outptr]==0x0f){
@@ -1285,22 +1297,22 @@ int c;
 		switch(c){
 			case 0x66:
 				if(second_660f[c2]){
-					getbyte();
-					ua_str(second_660f[getbyte()]);
+					getByte(OFS);
+					ua_str(second_660f[getByte(OFS)], OFS);
 					goto endp;
 				}
 				break;
 			case 0xf2:
 				if(second_f20f[c2]){
-					getbyte();
-					ua_str(second_f20f[getbyte()]);
+					getByte(OFS);
+					ua_str(second_f20f[getByte(OFS)], OFS);
 					goto endp;
 				}
 				break;
 			case 0xf3:
 				if(second_f30f[c2]){
-					getbyte();
-					ua_str(second_f30f[getbyte()]);
+					getByte(OFS);
+					ua_str(second_f30f[getByte(OFS)], OFS);
 					goto endp;
 				}
 				break;
@@ -1315,15 +1327,15 @@ int c;
     uputchar('\t');
     uprintf("%02Xh",c);
   }
-	else ua_str(Str);                      /* valid instruction */
+	else ua_str(Str, OFS);                      /* valid instruction */
 endp:
-  fprintf(hout,"%*s", 25-col, " ");
-  fprintf(hout,"%s\n", ubuf);
+  sprintf(tmp, "%*s", 25 - col, " ");
+  OFS << tmp << ubuf << std::endl;
 }
 
 #define MAXSTR 12
 
-void undata(unsigned ofs,unsigned long len,unsigned int type)
+void undata(unsigned offset, unsigned long len, unsigned int type, fs::ofstream &OFS)
 {
 unsigned int sizet,c,i,j;
 unsigned long total,d;
@@ -1333,36 +1345,38 @@ unsigned char data[MAXSTR];
 	for(total=0;total<len;){
 		col=0;
 		ubufp=ubuf;
-	  fprintf(hout,seg_size==16?"%04X ":"%08lX ",ofs);
+		char tmp[9];
+		sprintf(tmp, seg_size == 16 ? "%04X " : "%08lX ", offset);
+		OFS << tmp;
 		if((total+sizet)>len){
 			type=sizet=1;
 		}
 		for(i=0;i<MAXSTR;){
 			switch(sizet){
 				case 1:
-		  		data[i++]=getbyte();
+		  		data[i++]= getByte(OFS);
 					break;
 				case 2:
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
 					total++;
 					break;
 				case 4:
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
 					total+=3;
 					break;
 				case 8:
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
-		  		data[i++]=getbyte();
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
+		  		data[i++]= getByte(OFS);
 					total+=7;
 					break;
 			}
@@ -1455,8 +1469,8 @@ unsigned char data[MAXSTR];
 				}
 				break;
 		}
-	  fprintf(hout,"%*s",25-col," ");
-  	fprintf(hout,"%s\n", ubuf);
-		ofs+=i;
+		sprintf(tmp, "%*s", 25 - col, " ");
+		OFS << tmp << ubuf << std::endl;
+		offset+=i;
 	}
 }

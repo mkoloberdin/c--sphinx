@@ -17,8 +17,8 @@ using namespace std::string_literals;
 
 void addNameToTable(const std::string &Name);
 void AddSymbolList(struct idrec *ptr);
-int CreateDosDebug();
-int CreateW32Debug();
+int createDosDebug(fs::ofstream &OFS);
+int createW32Debug(fs::ofstream &OFS);
 void GeneratLst();
 
 std::vector<unsigned int> DbgLoc;            //адресс точки
@@ -291,13 +291,16 @@ unsigned int i,j;
 		(corinfo+numcorrel)->count=(unsigned short)(pdbg-(corinfo+numcorrel)->startline);
 		(corinfo+numcorrel)->end=DbgLoc[j-1]+1;
 		numcorrel++;
-		hout= createOutPut("tds", "wb");
-		if(am32)retcode=CreateW32Debug();
-		else retcode=CreateDosDebug();
-		if(retcode==0&&fwrite(output,outptr,1,hout)!=1)retcode=-1;
+        fs::path Filename = makeOutputFilename("tds");
+        fs::ofstream OFS(Filename, std::ios_base::binary);
+		dieIfNotOpen(Filename, OFS);
+		if (am32)
+			retcode = createW32Debug(OFS);
+		else retcode = createDosDebug(OFS);
+		OFS.write((const char *)output, outptr);
+        if (retcode == 0 && OFS.bad())retcode = -1;
 		if(retcode!=0)ErrWrite();
-		fclose(hout);
-		hout=NULL;
+		OFS.close();
 	}
 }
 
@@ -386,7 +389,7 @@ void AddGlobalName(struct idrec *ptr)
 	}
 }
 
-int CreateW32Debug()
+int createW32Debug(fs::ofstream &OFS)
 {
 int sstNames,sstDirectory;
 int	startcode=outptr;
@@ -473,8 +476,12 @@ unsigned int i,j,jj,ofs;
 	outptr=4;
 	sstDirectory=sstNames+4+lastofspul;
 	outdword(sstDirectory);
-	if(fwrite(output,sstNames+4,1,hout)!=1)return -1;
-	if(fwrite(bufname,lastofspul,1,hout)!=1)return -1;
+	OFS.write((const char *) output, sstNames + 4);
+	if (OFS.bad())
+		return -1;
+	OFS.write((const char *) bufname, lastofspul);
+	if (OFS.bad())
+		return -1;
 	free(bufname);
 // Subsection Directory
 	outptr=0;
@@ -503,7 +510,7 @@ unsigned int i,j,jj,ofs;
 	return 0;
 }
 
-int CreateDosDebug()
+int createDosDebug(fs::ofstream &OFS)
 {
 unsigned int i,j,count;
 D16START d16header;
@@ -554,16 +561,7 @@ unsigned short beg,end;
 	for(i=0;i<totalmodule;i++){
 //имена модулей
 		addNameToTable((FilesInfo[i]).Filename.string());
-		strcpy((char *) string3, (FilesInfo[i]).Filename.c_str());
-		char *str=strrchr((char *)string3,'.');
-		if(str!=0){
-			str[0]=0;
-			str=strrchr((char *)string3,'\\');
-			if(str==NULL)str=(char *)string3;
-			else str++;
-		}
-		else str=(char *)string3;
-		addNameToTable(str);
+		addNameToTable((FilesInfo[i]).Filename.filename().string());
 //таблица модулей
 		(module+i)->name=i*2+2+numsymbols;
 		(module+i)->language=1;
@@ -598,11 +596,19 @@ unsigned short beg,end;
 		if(modelmem==TINY&&comfile==file_exe)(segment+i)->segm=0xfff0;
 	}
 	d16header.pol_size=outptr;
-	if(fwrite(&d16header,sizeof(D16START),1,hout)!=1)return -1;
-	if(fwrite(symbols,sizeof(_SMB_)*numsymbols,1,hout)!=1)return -1;
-	if(fwrite(module,sizeof(MODULE)*totalmodule,1,hout)!=1)return -1;
+	OFS.write((const char *) &d16header, sizeof(D16START));
+	if (OFS.bad())
+		return -1;
+	OFS.write((const char *) symbols, sizeof(_SMB_) * numsymbols);
+	if (OFS.bad())
+		return -1;
+	OFS.write((const char *) module, sizeof(MODULE) * totalmodule);
+	if (OFS.bad())
+		return -1;
 	free(module);
-	if(fwrite(sft,sizeof(SFT)*totalmodule,1,hout)!=1)return -1;
+	OFS.write((const char *) sft, sizeof(SFT) * totalmodule);
+	if (OFS.bad())
+		return -1;
 	free(sft);
 //line table
 	lt=(LT *)MALLOC(sizeof(LT)*pdbg);
@@ -611,15 +617,23 @@ unsigned short beg,end;
 		(lt+j)->line=(unsigned short)DbgLineNum[j];
 		(lt+j)->ofs=(unsigned short)DbgLoc[j];
 	}
-	if(fwrite(lt,sizeof(LT)*pdbg,1,hout)!=1)return -1;
+	OFS.write((const char *) lt, sizeof(LT) * pdbg);
+	if (OFS.bad())
+		return -1;
 	free(lt);
-	if(fwrite(segment,sizeof(SEGMENT)*totalmodule,1,hout)!=1)return -1;
+	OFS.write((const char *) segment, sizeof(SEGMENT) * totalmodule);
+	if (OFS.bad())
+		return -1;
 	free(segment);
-	if(fwrite(ct,sizeof(CT)*numcorrel,1,hout)!=1)return -1;
+	OFS.write((const char *) ct, sizeof(CT) * numcorrel);
+	if (OFS.bad())
+		return -1;
 	free(ct);
 //	if(fwrite(types,NUMTYPES*12,1,hout)!=1)return -1;
 	memset(&string3,0,6*totalmodule);
-	if(fwrite(&string3,6*totalmodule,1,hout)!=1)return -1;
+	OFS.write((const char *) &string3, 6 * totalmodule);
+	if (OFS.bad())
+		return -1;
 /*	if(numsymbols){
 		memset(symbols,0,4*numsymbols);
 		if(fwrite(symbols,4*numsymbols,1,hout)!=1)return -1;
@@ -648,10 +662,14 @@ unsigned int j;
 unsigned long startip;
 unsigned int offs2,line;
 unsigned char flag;
-	hout= createOutPut("lst", "wt");
+	fs::path Filename = makeOutputFilename("lst");
+	fs::ofstream OFS(Filename);
+	dieIfNotOpen(Filename, OFS);
 	if(LstEnd[pdbg-1]==0)LstEnd[pdbg-1]=endinptr;
 	startip=(comfile!=file_w32&&comfile!=file_bin?0:ImageBase);
-	fprintf(hout,"SPHINX/SHEKER C-- One Pass Disassembler. Version %d.%02d%s %s\n",ver1,ver2,betta,__DATE__);
+	char ver2str[4];
+	sprintf(ver2str, "%02d", ver2);
+	OFS << "SPHINX/SHEKER C-- One Pass Disassembler. Version " << ver1 << "." << ver2str << betta << " " << __DATE__;
 	for(j=0;j<pdbg;j++){
 //printf("line %d loc %X\n",dbgnum[j],dbgloc[j]);
 		if((int)LstFlags[j]!=-1){
@@ -667,13 +685,16 @@ unsigned char flag;
 				if(lststring[j]!=NULL)printf(" %s\n",lststring[j]);
 				else if(line!=0)printf("\n");
 	*/
-				fprintf(hout,"\n");
-				if(line!=0)fprintf(hout,"%s %u:", FilesInfo[DbgModuleNum[j]].Filename.c_str(),line);
-				if (!Listing[j].empty())fprintf(hout, " %s\n", Listing[j]);
-				else if(line!=0)fprintf(hout,"\n");
+				OFS << std::endl;
+				if (line != 0)
+					OFS << FilesInfo[DbgModuleNum[j]].Filename << " " << line << ":";
+				if (!Listing[j].empty())
+					OFS << " " << Listing[j] << std::endl;
+				else if (line != 0)
+					OFS << std::endl;
   			while(outptr<offs2){
-					if(flag&0x1e)undata(instruction_offset,offs2-DbgLoc[j],(flag>>1)&15);
-	  		  else unassemble(instruction_offset);
+					if(flag&0x1e)undata(instruction_offset, offs2 - DbgLoc[j], (flag >> 1) & 15, OFS);
+	  		  else unassemble(instruction_offset, OFS);
 				}
 			}
 			if((dbg&1)!=0&&((flag&0xe)!=0||line==0)){
@@ -682,8 +703,7 @@ unsigned char flag;
 			}
 		}
 	}
-	fclose(hout);
-	hout=NULL;
+	OFS.close();
 }
 
 #ifdef DEBUGMODE
